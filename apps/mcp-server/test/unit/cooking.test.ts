@@ -5,10 +5,11 @@ import {
   type AnalysisInput,
   applySubstitute,
   demandByItem,
+  ingredientCovered,
   type ItemInfo,
   type PlannedLine,
   requireMakeable,
-  skipItem,
+  skipIngredient,
   substituteOptions,
 } from '../../src/domain/cooking.ts';
 import type { PantryError } from '../../src/domain/errors.ts';
@@ -230,9 +231,22 @@ describe('plan edits during cooking', () => {
     expect(applySubstitute(second, 'scallion', { to_item_id: 'onion', quantity: 1 })).toEqual(second);
   });
 
-  it('skips every planned line of an item and is a no-op when repeated', () => {
-    const skipped = skipItem(plan, 'pasta');
+  it('skips an ingredient and is a no-op when repeated', () => {
+    const skipped = skipIngredient(plan, 'pasta');
     expect(skipped[0]).toEqual({ item_id: 'pasta', quantity: 300, status: 'skipped', origin: 'recipe' });
-    expect(skipItem(skipped, 'pasta')).toEqual(skipped);
+    expect(skipIngredient(skipped, 'pasta')).toEqual(skipped);
+    expect(ingredientCovered(plan, 'pasta')).toBe(true);
+    expect(ingredientCovered(skipped, 'pasta')).toBe(false);
+  });
+
+  it('drops the substitute standing in for a skipped ingredient, leaving other lines of that item', () => {
+    const substituted = applySubstitute(plan, 'scallion', { to_item_id: 'onion', quantity: 1 });
+    expect(ingredientCovered(substituted, 'scallion')).toBe(true);
+
+    const skipped = skipIngredient(substituted, 'scallion');
+    expect(skipped.filter((l) => l.replaces_item_id === 'scallion')).toEqual([]);
+    expect(skipped).toContainEqual({ item_id: 'onion', quantity: 1, status: 'planned', origin: 'recipe' });
+    expect(ingredientCovered(skipped, 'scallion')).toBe(false);
+    expect(demandByItem(skipped).get('onion')).toBe(1);
   });
 });

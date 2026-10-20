@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadCatalog } from '../../db/catalog.ts';
 import { loadIngredients } from '../../db/recipes.ts';
 import { itemInfo, lockActiveSession, updatePlan } from '../../db/sessions.ts';
-import { skipItem } from '../../domain/cooking.ts';
+import { ingredientCovered, ingredientOf, skipIngredient } from '../../domain/cooking.ts';
 import { PantryError } from '../../domain/errors.ts';
 import { findItem } from '../../domain/items.ts';
 import type { ToolContext } from '../context.ts';
@@ -33,22 +33,26 @@ export function registerSkipIngredient(server: McpServer, ctx: ToolContext): voi
         const session = await lockActiveSession(tx, householdId, args.session_id);
         const items = await itemInfo(tx, householdId);
         const item = findItem(args.item, await loadCatalog(tx, householdId));
-        const line = session.planned_usage.find((l) => l.item_id === item?.id);
-        if (!item || !line) {
+        const lines = session.planned_usage.filter((l) => l.item_id === item?.id);
+        if (!item || lines.length === 0) {
           throw new PantryError('not_in_plan', `This recipe doesn't use ${args.item}.`, { item: args.item });
         }
 
-        // A substitute stands in for its recipe ingredient: skipping it means doing without that ingredient.
-        const ingredientId = line.replaces_item_id ?? line.item_id;
-        const ingredient = (await loadIngredients(tx, session.recipe_id)).find((i) => i.item_id === ingredientId);
-        if (line.status === 'planned' && !ingredient?.optional && args.confirm_skip !== true) {
+        // Skipping works on recipe ingredients: "skip the scallions" also drops the onion standing in
+        // for them, and skipping that onion means doing without the scallions.
+        const ingredientIds = [...new Set(lines.map(ingredientOf))];
+        const ingredients = await loadIngredients(tx, session.recipe_id);
+        const required = ingredientIds.some(
+          (id) => ingredientCovered(session.planned_usage, id) && !ingredients.find((i) => i.item_id === id)?.optional,
+        );
+        if (required && args.confirm_skip !== true) {
           throw new PantryError('needs_clarification', `${item.name} is needed for this recipe.`, {
             ask: `Cook without the ${item.name} anyway?`,
             required: ['confirm_skip'],
           });
         }
 
-        const plan = skipItem(session.planned_usage, item.id);
+        const plan = ingredientIds.reduce((p, id) => skipIngredient(p, id), session.planned_usage);
         const changed = await updatePlan(tx, session, plan);
         return {
           data: { session_id: session.id, changed, planned_usage: usageLines(plan, items) },

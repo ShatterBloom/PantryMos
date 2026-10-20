@@ -209,7 +209,20 @@ export function applySubstitute(
   return result;
 }
 
-/** Marks every planned line of an item as skipped. */
-export function skipItem(plan: readonly PlannedLine[], itemId: string): PlannedLine[] {
-  return plan.map((l) => (l.item_id === itemId && l.status === 'planned' ? { ...l, status: 'skipped' } : l));
+/** The recipe ingredient a line covers: itself, or the one a substitute stands in for. */
+export const ingredientOf = (line: PlannedLine): string => line.replaces_item_id ?? line.item_id;
+
+/** Whether anything in the plan still covers the ingredient (its own line or a substitute). */
+export function ingredientCovered(plan: readonly PlannedLine[], ingredientId: string): boolean {
+  return plan.some((l) => l.status === 'planned' && ingredientOf(l) === ingredientId);
+}
+
+/**
+ * Leaves a recipe ingredient out (§7.4 skip_ingredient): its recipe line becomes skipped and any
+ * substitute standing in for it is dropped, so nothing is used for it. A no-op when repeated.
+ */
+export function skipIngredient(plan: readonly PlannedLine[], ingredientId: string): PlannedLine[] {
+  return plan
+    .filter((l) => l.replaces_item_id !== ingredientId)
+    .map((l) => (l.origin === 'recipe' && l.item_id === ingredientId && l.status === 'planned' ? { ...l, status: 'skipped' } : l));
 }

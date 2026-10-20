@@ -158,6 +158,25 @@ describe('plan edits while cooking', () => {
       await startWithoutScallions();
       await call('substitute', { from_item: 'scallion', to_item: 'onion' });
       expect((await call('skip_ingredient', { item: 'onion' })).error?.code).toBe('needs_clarification');
+      const { out } = await call('skip_ingredient', { item: 'onion', confirm_skip: true });
+      expect(out.planned_usage.filter((l) => l.item === 'onion' || l.item === 'scallion')).toEqual([
+        { item: 'scallion', quantity: 2, unit: 'count', status: 'skipped', origin: 'recipe', replaces: null },
+      ]);
+    });
+
+    it('drops the substitute when the ingredient it replaces is skipped, so nothing is used for it', async () => {
+      await startWithoutScallions();
+      await call('substitute', { from_item: 'scallion', to_item: 'onion' });
+      // The scallion line is already skipped, but the onion still covers it: skipping it is a real change.
+      expect((await call('skip_ingredient', { item: 'scallion' })).error?.code).toBe('needs_clarification');
+      const { out } = await call('skip_ingredient', { item: 'scallion', confirm_skip: true });
+      expect(out.changed).toBe(true);
+      expect(out.planned_usage.some((l) => l.item === 'onion')).toBe(false);
+
+      const card = await callWrite(client, 'propose_consumption', {});
+      expect(parseErrorResult(card)).toBeNull();
+      expect((card.structuredContent as { card: { readback_text: string } }).card.readback_text).not.toMatch(/onion/);
+      expect((await call('skip_ingredient', { item: 'scallion' })).out.changed).toBe(false);
     });
 
     it('refuses an item the recipe does not use', async () => {
