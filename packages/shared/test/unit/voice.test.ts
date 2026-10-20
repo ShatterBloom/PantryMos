@@ -1,5 +1,6 @@
+// The ConfirmGate's phrase lists (§8.5), shared by the agent and the web app.
 import { describe, expect, it } from 'vitest';
-import { ACCEPT, CONFIRM, DECLINE, DISCARD, normalizeUtterance } from '../../src/gate/confirmGate.ts';
+import { ACCEPT, CONFIRM, DECLINE, DISCARD, normalizeUtterance } from '../../src/voice.ts';
 
 describe('normalizeUtterance (§8.5 step 1)', () => {
   it('lowercases, strips punctuation and the wake word, and collapses spaces', () => {

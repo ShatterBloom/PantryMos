@@ -1,5 +1,6 @@
 // ConfirmGate (IMPLEMENTATION_PLAN §8.5): "the user confirmed" is decided here, by exact phrase match
 // inside a voice window, never by the model. A gate turn makes no model call.
+import { ACCEPT, CONFIRM, DECLINE, DISCARD, normalizeUtterance } from '@pantrymos/shared/voice';
 import type { Pool } from '../db.ts';
 import type { InternalClient, InternalResponse } from '../internalClient.ts';
 import { insertEvent, type NewEvent } from '../store/events.ts';
@@ -18,34 +19,6 @@ import {
   timerStarted,
 } from '../turn/speech.ts';
 import { uuidv5 } from '../uuid.ts';
-
-export const CONFIRM: ReadonlySet<string> = new Set([
-  'yes',
-  'yes please',
-  'yeah',
-  'yep',
-  'confirm',
-  'confirmed',
-  'correct',
-  "that's right",
-  'that is right',
-  'do it',
-  'sounds good',
-]);
-export const DISCARD: ReadonlySet<string> = new Set(['cancel', 'discard', 'never mind', 'scrap that']);
-export const ACCEPT: ReadonlySet<string> = new Set([...CONFIRM, 'start', 'start it', 'start the timer', 'sure', 'ok', 'okay']);
-export const DECLINE: ReadonlySet<string> = new Set(['no', 'no thanks', 'not yet', 'later', 'skip']);
-
-/** §8.5 step 1: lowercase, no punctuation (apostrophes kept), single spaces, no leading wake word. */
-export function normalizeUtterance(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[’‘]/g, "'")
-    .replace(/[^\p{L}\p{N}'\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^mos\b ?/, '');
-}
 
 export interface GateDeps {
   pool: Pool;
