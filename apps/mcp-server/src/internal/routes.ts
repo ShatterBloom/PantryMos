@@ -3,7 +3,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ConfirmBody, confirmProposal } from '../commit/confirm.ts';
 import { EditBody, editProposal, RegenerateBody, regenerateProposal } from '../commit/edit.ts';
-import { proposalHousehold } from '../commit/lock.ts';
+import { notFound, proposalHousehold } from '../commit/lock.ts';
+import { proposalView } from '../db/proposals.ts';
 import { RejectBody, rejectProposal } from '../commit/reject.ts';
 import type { Config } from '../config.ts';
 import type { Pool } from '../db/pool.ts';
@@ -45,6 +46,13 @@ export function registerInternalRoutes(app: FastifyInstance, pool: Pool, config:
     },
     action(ConfirmBody, (id, body) => confirmProposal(pool, id, body)),
   );
+
+  // The card as it stands, for the agent to read back or to find the proposal's conversation (§8.5, §8.8).
+  app.get('/internal/proposals/:id', async (request, reply) => {
+    const params = ProposalParams.safeParse(request.params);
+    const view = params.success ? await proposalView(pool, params.data.id) : null;
+    return view ? reply.send(view) : reply.code(404).send(notFound().body);
+  });
 
   app.post('/internal/proposals/:id/reject', action(RejectBody, (id, body) => rejectProposal(pool, id, body)));
   app.patch('/internal/proposals/:id', action(EditBody, (id, body) => editProposal(pool, id, body)));

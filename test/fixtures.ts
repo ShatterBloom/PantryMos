@@ -209,18 +209,18 @@ export async function waitForLockWaiters(count: number, timeoutMs = 5000): Promi
   });
 }
 
-/** POSTs (or PATCHes) to the internal listener with the service token. */
+/** Calls the internal listener with the service token; GET sends no body. */
 export async function internalCall(
   servers: RunningServers,
   path: string,
   body: unknown,
-  method: 'POST' | 'PATCH' = 'POST',
+  method: 'GET' | 'POST' | 'PATCH' = 'POST',
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const { port } = servers.internal.server.address() as AddressInfo;
   const res = await fetch(`http://127.0.0.1:${port}${path}`, {
     method,
-    headers: { 'content-type': 'application/json', 'x-service-token': TEST_SERVICE_TOKEN },
-    body: JSON.stringify(body),
+    headers: { 'x-service-token': TEST_SERVICE_TOKEN, ...(method === 'GET' ? {} : { 'content-type': 'application/json' }) },
+    ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
   });
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }

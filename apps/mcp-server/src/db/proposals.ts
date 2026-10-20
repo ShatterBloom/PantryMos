@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { canonicalJson } from '@pantrymos/shared';
 import { PantryError } from '../domain/errors.ts';
+import type { Queryable } from './catalog.ts';
 import type { Tx } from './tx.ts';
 
 export type ProposalKind = 'intake' | 'consume' | 'revise_consumption' | 'adjust' | 'undo';
@@ -156,4 +157,28 @@ export async function pendingProposal(
     [householdId, subjectKey],
   );
   return rows[0] ?? null;
+}
+
+export interface ProposalView {
+  proposal_id: string;
+  kind: ProposalKind;
+  /** A pending card past its expiry reads as `expired`, though only an action marks it so. */
+  status: 'pending' | 'committed' | 'rejected' | 'superseded' | 'stale' | 'expired';
+  version: number;
+  conversation_id: string;
+  card: unknown;
+  expires_at: string;
+}
+
+/** The current version of a proposal, as the card shows it (no lock). */
+export async function proposalView(q: Queryable, proposalId: string): Promise<ProposalView | null> {
+  const { rows } = await q.query<Omit<ProposalView, 'expires_at'> & { expires_at: Date }>(
+    `SELECT id AS proposal_id, kind,
+            CASE WHEN status = 'pending' AND expires_at <= now() THEN 'expired' ELSE status END AS status,
+            version, conversation_id, payload -> 'card' AS card, expires_at
+       FROM pantry.proposals WHERE id = $1`,
+    [proposalId],
+  );
+  const row = rows[0];
+  return row ? { ...row, expires_at: iso(row.expires_at) } : null;
 }
