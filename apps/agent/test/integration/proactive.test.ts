@@ -56,30 +56,25 @@ describe('proactive turns', () => {
     await startTimer('eggs');
     await makeDue('eggs');
 
-    // The model tries to move on anyway; the turn refuses.
-    agent.model.push(callTools(['next_step']), say("The eggs are done — say next when you're ready."));
+    // The model tries to move on, and to start a timer nobody asked for; the turn refuses both.
+    agent.model.push(
+      callTools(['next_step'], ['start_timer', { label: 'rest', seconds: 60 }]),
+      say("The eggs are done — say next when you're ready."),
+    );
     await tick();
 
     const request = agent.model.requests.at(-2)!;
     expect(request.messages.at(-1)!.content).toEqual([{ text: '[app event] timer "eggs" finished.' }]);
     const offered = request.tools.map((t) => t.name).sort();
     expect(offered).toEqual(
-      [
-        'cancel_timer',
-        'expiring_soon',
-        'get_session',
-        'list_inventory',
-        'list_recent_operations',
-        'list_timers',
-        'pause_timer',
-        'propose_consumption',
-        'resume_timer',
-        'start_timer',
-        'suggest_recipes',
-      ].sort(),
+      ['expiring_soon', 'get_session', 'list_inventory', 'list_recent_operations', 'list_timers', 'propose_consumption', 'suggest_recipes'].sort(),
     );
-    const refused = agent.model.requests.at(-1)!.messages.at(-1)!.content[0] as unknown as { toolResult: { status: string; content: [{ json: unknown }] } };
-    expect(refused.toolResult).toMatchObject({ status: 'error', content: [{ json: { code: 'tool_not_allowed' } }] });
+    const refused = agent.model.requests.at(-1)!.messages.at(-1)!.content as unknown as Array<{ toolResult: unknown }>;
+    expect(refused.map((b) => b.toolResult)).toEqual([
+      expect.objectContaining({ status: 'error', content: [{ json: expect.objectContaining({ code: 'tool_not_allowed' }) }] }),
+      expect.objectContaining({ status: 'error', content: [{ json: expect.objectContaining({ code: 'tool_not_allowed' }) }] }),
+    ]);
+    expect(await agentRows(agent, `SELECT label FROM agent.timers WHERE conversation_id = $1`, [agent.conversationId])).toEqual([{ label: 'eggs' }]);
 
     expect(await proactive()).toEqual([
       expect.objectContaining({ speech: "The eggs are done — say next when you're ready.", cards: [], voice_prompt: null }),

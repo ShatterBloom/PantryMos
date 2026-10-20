@@ -10,7 +10,7 @@ import { completeRequest, markStarted, type TurnSnapshot } from '../store/reques
 import { stepHasTimer } from '../store/timers.ts';
 import { callsByToolUse, callsOfTurn, insertPending, markDone, type ToolCallRow, type ToolOutput, type TurnOwner } from '../store/toolCalls.ts';
 import { closeOpenWindows } from '../store/windows.ts';
-import { isLocalTool, LOCAL_TOOL_NAMES, localToolSpecs, runLocalTool } from '../tools/local.ts';
+import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
@@ -19,7 +19,10 @@ import { eventBlock, timerOffer } from './speech.ts';
 /** §8.1: the single source of truth for iteration caps (also §11.5). */
 export const MAX_ITERATIONS = { user: 8, proactive: 3 } as const;
 
-/** §8.1: what a proactive turn may call. */
+/**
+ * §8.1: what a proactive turn may call. Timers change only when the user asks, so of the timer
+ * tools only list_timers: the prompt says so too, but the prompt is not a permission boundary.
+ */
 const PROACTIVE_TOOLS: ReadonlySet<string> = new Set([
   'list_inventory',
   'expiring_soon',
@@ -27,7 +30,7 @@ const PROACTIVE_TOOLS: ReadonlySet<string> = new Set([
   'get_session',
   'list_recent_operations',
   'propose_consumption',
-  ...LOCAL_TOOL_NAMES,
+  'list_timers',
 ]);
 
 /** Tools whose success output delivers a recipe step to the user. */
