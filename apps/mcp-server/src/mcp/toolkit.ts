@@ -2,6 +2,8 @@
 import { randomUUID } from 'node:crypto';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { type BusinessError, META_CONVERSATION_ID, META_REQUEST_ID } from '@pantrymos/shared';
+
+export { parseErrorResult } from '@pantrymos/shared';
 import { z } from 'zod';
 import { runIdempotent } from '../db/requestLog.ts';
 import type { Tx } from '../db/tx.ts';
@@ -31,19 +33,6 @@ export function errorResult(error: BusinessError): CallToolResult {
       { type: 'text', text: JSON.stringify(error) },
     ],
   };
-}
-
-/** Reads the error body back out of an `errorResult` (for the agent and tests). */
-export function parseErrorResult(result: object): BusinessError | null {
-  const { isError, content } = result as { isError?: unknown; content?: unknown };
-  if (isError !== true || !Array.isArray(content)) return null;
-  const json = (content as Array<{ type?: string; text?: string }>)[1];
-  if (json?.type !== 'text' || json.text === undefined) return null;
-  try {
-    return JSON.parse(json.text) as BusinessError;
-  } catch {
-    return null;
-  }
 }
 
 export interface RequestMeta {
