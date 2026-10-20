@@ -38,8 +38,20 @@ const EXECUTORS: Record<ProposalKind, Executor> = {
   undo: undoExecutor,
 };
 
-/** Catalog constraints a concurrent creator could hit despite the advisory locks (§4.3 step 3). */
-const CATALOG_CONSTRAINTS = new Set(['items_name_ci', 'unit_conversions_pkey']);
+/**
+ * Unique constraints a concurrent commit could hit despite the locks (§4.3 step 3), with the stale
+ * reason each means: a creator of the same catalog entry, or an undo of the same event.
+ */
+const STALE_CONSTRAINTS: ReadonlyMap<string, string> = new Map([
+  ['items_name_ci', 'catalog_changed'],
+  ['unit_conversions_pkey', 'catalog_changed'],
+  ['one_revert_per_event', 'already_reverted'],
+]);
+
+/** The stale reason for a database error from executing a plan, or null when it is a fault. */
+export function staleReasonOf(err: unknown): string | null {
+  return STALE_CONSTRAINTS.get((err as { constraint?: string } | null)?.constraint ?? '') ?? null;
+}
 
 /**
  * Confirms exactly `body.version` of a proposal and executes its pinned plan, in one transaction.
@@ -95,9 +107,10 @@ async function confirmLocked(tx: Tx, proposalId: string, householdId: string, bo
   } catch (err) {
     // The locks above make this unreachable through the normal path; if a unique constraint fires
     // anyway, the card is stale, never a raw database error (§4.3 step 3).
-    if (!CATALOG_CONSTRAINTS.has((err as { constraint?: string }).constraint ?? '')) throw err;
+    const reason = staleReasonOf(err);
+    if (reason === null) throw err;
     await tx.query('ROLLBACK TO SAVEPOINT execute');
-    return markStale(tx, proposal, body, 'catalog_changed');
+    return markStale(tx, proposal, body, reason);
   }
 }
 

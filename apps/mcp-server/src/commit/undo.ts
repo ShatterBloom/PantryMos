@@ -12,7 +12,8 @@ const preconditionsOf = (p: LockedProposal) => p.preconditions as UndoPreconditi
  * §4.3 step 3.4: none of the pinned events was reverted meanwhile. The events themselves are not
  * row-locked: the role may only append to the ledger (I3), and Postgres needs UPDATE rights for any
  * row lock. Reverting an event always writes its batch, whose row the caller already holds, so no
- * concurrent undo of these events can commit between this check and ours.
+ * concurrent undo of these events can commit between this check and ours. `one_revert_per_event`
+ * backs this up, and confirm maps it to `stale_state`.
  */
 async function checkEventsNotReverted(tx: Tx, eventIds: readonly string[]): Promise<boolean> {
   const { rowCount } = await tx.query(`SELECT 1 FROM pantry.inventory_events WHERE reverts_event_id = ANY ($1::uuid[])`, [eventIds]);
