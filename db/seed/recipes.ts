@@ -23,7 +23,7 @@ export const RECIPES: readonly SeedRecipe[] = [
       { item: 'pasta', quantity: 300 },
       { item: 'spinach', quantity: 150 },
       { item: 'milk', quantity: 250 },
-      { item: 'garlic', quantity: 2 },
+      { item: 'garlic clove', quantity: 2 },
       { item: 'butter', quantity: 20 },
       { item: 'scallion', quantity: 2, substitutes: [{ item: 'onion', ratio: 0.5 }] },
       { item: 'parmesan', quantity: 40, optional: true, substitutes: [{ item: 'cheddar', ratio: 1 }] },

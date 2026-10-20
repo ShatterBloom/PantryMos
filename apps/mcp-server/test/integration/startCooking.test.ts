@@ -15,7 +15,7 @@ import {
 } from '../../../../test/fixtures.ts';
 
 /** Enough of everything for creamy spinach pasta for 3, except scallions. */
-const PASTA_STOCK = { pasta: 500, spinach: 300, milk: 1000, garlic: 5, butter: 100, parmesan: 100 };
+const PASTA_STOCK = { pasta: 500, spinach: 300, milk: 1000, 'garlic clove': 5, butter: 100, parmesan: 100 };
 
 interface Started {
   session_id: string;
@@ -125,12 +125,12 @@ describe('start_cooking and get_session', () => {
     const res = await start({ recipe_name: 'creamy spinach pasta' });
     expect(parseErrorResult(res)).toMatchObject({ code: 'insufficient_stock' });
     expect((parseErrorResult(res)?.shortfall as Array<{ item: string }>).map((s) => s.item).sort()).toEqual([
-      'butter', 'garlic', 'milk', 'pasta', 'scallion', 'spinach',
+      'butter', 'garlic clove', 'milk', 'pasta', 'scallion', 'spinach',
     ]);
   });
 
   it('skips a missing optional ingredient automatically', async () => {
-    await stockKitchen(kitchen, { pasta: 500, spinach: 300, milk: 1000, garlic: 5, butter: 100, scallion: 4 });
+    await stockKitchen(kitchen, { pasta: 500, spinach: 300, milk: 1000, 'garlic clove': 5, butter: 100, scallion: 4 });
     const out = (await start({ recipe_name: 'creamy spinach pasta' })).structuredContent as unknown as Started;
     const row = await session(out.session_id);
     expect(row.planned_usage).toContainEqual({ item_id: kitchen.items.parmesan, quantity: 40, status: 'skipped', origin: 'recipe' });

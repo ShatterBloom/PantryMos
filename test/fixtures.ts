@@ -235,7 +235,7 @@ export const PASTA_STOCK: Record<string, number> = {
   pasta: 500,
   spinach: 300,
   milk: 1000,
-  garlic: 5,
+  'garlic clove': 5,
   butter: 100,
   parmesan: 100,
   scallion: 4,

@@ -22,7 +22,7 @@ export const CATALOG: readonly SeedItem[] = [
   { name: 'spinach', aliases: ['baby spinach'], base_unit: 'g', category: 'produce', default_shelf_days: 5 },
   { name: 'scallion', aliases: ['green onion', 'spring onion'], base_unit: 'count', category: 'produce', default_shelf_days: 7 },
   { name: 'onion', aliases: ['yellow onion'], base_unit: 'count', category: 'produce', default_shelf_days: 30 },
-  { name: 'garlic', aliases: ['garlic clove'], base_unit: 'count', category: 'produce', default_shelf_days: 30 },
+  { name: 'garlic clove', aliases: ['garlic'], base_unit: 'count', category: 'produce', default_shelf_days: 30 },
   { name: 'potato', base_unit: 'count', category: 'produce', default_shelf_days: 21 },
   { name: 'carrot', base_unit: 'count', category: 'produce', default_shelf_days: 21 },
   { name: 'bell pepper', aliases: ['capsicum'], base_unit: 'count', category: 'produce', default_shelf_days: 7 },

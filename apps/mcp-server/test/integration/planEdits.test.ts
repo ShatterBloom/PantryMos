@@ -146,12 +146,12 @@ describe('plan edits while cooking', () => {
       await startPasta(kitchen, client);
       expect((await call('skip_ingredient', { item: 'garlic' })).error).toEqual({
         code: 'needs_clarification',
-        message: 'garlic is needed for this recipe.',
-        ask: 'Cook without the garlic anyway?',
+        message: 'garlic clove is needed for this recipe.',
+        ask: 'Cook without the garlic clove anyway?',
         required: ['confirm_skip'],
       });
       const { out } = await call('skip_ingredient', { item: 'garlic', confirm_skip: true });
-      expect(out.planned_usage).toContainEqual(expect.objectContaining({ item: 'garlic', status: 'skipped' }));
+      expect(out.planned_usage).toContainEqual(expect.objectContaining({ item: 'garlic clove', status: 'skipped' }));
     });
 
     it('treats a substitute like the ingredient it replaces', async () => {
