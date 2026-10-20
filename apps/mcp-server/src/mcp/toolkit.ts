@@ -128,7 +128,8 @@ export async function runWriteTool(
       householdId: ctx.auth.householdId,
       requestId: meta.requestId,
       scope: `tool:${call.name}`,
-      payload: { args: call.args, conversation_id: meta.conversationId },
+      // The conversation is part of the request's identity only where it changes the effect.
+      payload: { args: call.args, conversation_id: call.needsConversation ? meta.conversationId : null },
     },
     async (tx) => ({ status: 200, body: await effect(tx, meta) }),
   );

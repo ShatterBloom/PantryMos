@@ -186,6 +186,20 @@ describe('runWriteTool', () => {
     expect(runs).toBe(1);
   });
 
+  it('ignores the conversation id for tools that do not use it, so a retry from another tab replays', async () => {
+    let runs = 0;
+    const effect = async () => ({ data: { runs: ++runs }, text: 'ok' });
+    const requestId = randomUUID();
+    const noConversation = (conversationId: string) => ({
+      ...call({ [META_REQUEST_ID]: requestId, [META_CONVERSATION_ID]: conversationId }),
+      needsConversation: false,
+    });
+    const first = await runWriteTool(ctx, noConversation(randomUUID()), effect);
+    const retry = await runWriteTool(ctx, noConversation(randomUUID()), effect);
+    expect(retry).toEqual(first);
+    expect(runs).toBe(1);
+  });
+
   it('passes the resolved ids to the effect', async () => {
     const m = meta();
     const res = await runWriteTool(ctx, call(m), async (_tx, resolved) => ({ data: { ...resolved }, text: 'ok' }));
