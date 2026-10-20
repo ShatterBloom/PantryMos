@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@pantrymos/shared": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

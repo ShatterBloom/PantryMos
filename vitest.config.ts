@@ -25,7 +25,8 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      include: ['apps/mcp-server/src/**', 'apps/agent/src/**', 'packages/*/src/**'],
+      // The web app's logic is covered; its React views and browser adapters are checked by hand (§9.7).
+      include: ['apps/mcp-server/src/**', 'apps/agent/src/**', 'apps/web/src/lib/**', 'packages/*/src/**'],
       // Process entry points only wire config to startServers; covered by the compose smoke run.
       exclude: ['apps/*/src/index.ts'],
       reporter: ['text-summary', 'html', 'lcov'],
