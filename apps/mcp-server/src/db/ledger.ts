@@ -18,8 +18,8 @@ export interface Delta {
 /**
  * Records one inventory event and applies it to its batch in the same transaction, so
  * `batches.quantity = Σ events` (I1). Bumps the batch version (stale detection, §4.2) and
- * recomputes status (I8): depleted at zero, active otherwise, discarded stays discarded.
- * The `quantity >= 0` CHECK rejects an overdraw.
+ * recomputes status (I8): active while it has stock; at zero, discarded if a discard emptied it
+ * (or it was already discarded), else depleted. The `quantity >= 0` CHECK rejects an overdraw.
  */
 export async function applyDelta(tx: Tx, d: Delta): Promise<string> {
   const eventId = randomUUID();
@@ -33,11 +33,11 @@ export async function applyDelta(tx: Tx, d: Delta): Promise<string> {
     `UPDATE pantry.batches
         SET quantity = quantity + $3,
             version  = version + 1,
-            status   = CASE WHEN status = 'discarded' THEN status
-                            WHEN quantity + $3 = 0 THEN 'depleted'
-                            ELSE 'active' END
+            status   = CASE WHEN quantity + $3 > 0 THEN 'active'
+                            WHEN $4 = 'discard' OR status = 'discarded' THEN 'discarded'
+                            ELSE 'depleted' END
       WHERE id = $1 AND household_id = $2`,
-    [d.batchId, d.householdId, d.delta],
+    [d.batchId, d.householdId, d.delta, d.reason],
   );
   if (updated.rowCount !== 1) throw new Error(`Batch ${d.batchId} not found in household ${d.householdId}`);
   return eventId;

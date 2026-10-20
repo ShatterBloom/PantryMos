@@ -6,6 +6,7 @@ import type { ProposalKind } from '../db/proposals.ts';
 import { type Outcome, runIdempotent } from '../db/requestLog.ts';
 import type { Tx } from '../db/tx.ts';
 import { PantryError } from '../domain/errors.ts';
+import { adjustExecutor } from './adjust.ts';
 import { consumeExecutor } from './consume.ts';
 import { intakeExecutor } from './intake.ts';
 import { reviseExecutor } from './revise.ts';
@@ -28,11 +29,12 @@ export const ConfirmBody = z
 
 export type ConfirmBody = z.infer<typeof ConfirmBody>;
 
-/** Kinds without an executor yet: adjust and undo (M3). */
+/** Kinds without an executor yet: undo (M3). */
 const EXECUTORS: Partial<Record<ProposalKind, Executor>> = {
   intake: intakeExecutor,
   consume: consumeExecutor,
   revise_consumption: reviseExecutor,
+  adjust: adjustExecutor,
 };
 
 /** Catalog constraints a concurrent creator could hit despite the advisory locks (§4.3 step 3). */

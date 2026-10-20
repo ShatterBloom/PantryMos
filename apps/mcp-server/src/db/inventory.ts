@@ -13,6 +13,7 @@ export interface BatchView {
   version: number;
   priority_date: string;
   priority_source: 'package' | 'estimate';
+  status: 'active' | 'depleted' | 'discarded';
   date_label: string;
 }
 
@@ -29,11 +30,13 @@ interface Row {
   package_date_type: PackageDateType | null;
   priority_date: string;
   priority_source: 'package' | 'estimate';
+  status: 'active' | 'depleted' | 'discarded';
 }
 
 const SELECT_BATCH = `
   SELECT b.id AS batch_id, i.id AS item_id, i.name AS item, i.base_unit AS unit, b.quantity::text AS quantity,
-         b.version, b.purchased_at, b.opened_at, b.package_date, b.package_date_type, b.priority_date, b.priority_source
+         b.version, b.purchased_at, b.opened_at, b.package_date, b.package_date_type, b.priority_date, b.priority_source,
+         b.status
     FROM pantry.batches b
     JOIN pantry.items i ON i.id = b.item_id`;
 
@@ -47,6 +50,7 @@ function toView(r: Row, today: string): BatchView {
     version: r.version,
     priority_date: r.priority_date,
     priority_source: r.priority_source,
+    status: r.status,
     date_label: dateLabel(r, today),
   };
 }

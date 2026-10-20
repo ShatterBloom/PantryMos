@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
-  adjustBatch,
+  adjustStock,
   callWrite,
   connectMcpClient,
   createDemoKitchen,
@@ -154,7 +154,7 @@ describe('edit and regenerate cards', () => {
           await admin.query(`SELECT id FROM pantry.batches WHERE item_id = $1 ORDER BY purchased_at LIMIT 1`, [kitchen.items.milk])
         ).rows,
       );
-      await adjustBatch(kitchen.householdId, older.id, -1000);
+      expect((await adjustStock(servers, client, { batch_id: older.id, delta: -1000, reason: 'discard' })).status).toBe(200);
       expect(await confirm(stale.proposal_id, 1)).toMatchObject({ status: 409, body: { code: 'stale_state' } });
 
       const fresh = (await regenerate(stale.proposal_id)).body as unknown as CardResult;

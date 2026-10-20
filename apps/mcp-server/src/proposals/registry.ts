@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { ProposalKind, ProposalRef } from '../db/proposals.ts';
 import type { Tx } from '../db/tx.ts';
 import type { Card } from '../domain/card.ts';
+import { AdjustInput, proposeAdjustment } from './adjust.ts';
 import { type ConsumeInput, ConsumeOverrides, mergeOverrides, proposeConsumption } from './consume.ts';
 import { type IntakeInput, IntakeItems, proposeIntake } from './intake.ts';
 import { proposeRevision, type ReviseInput, RevisionUsage } from './revise.ts';
@@ -15,7 +16,7 @@ export interface Planner {
   propose(tx: Tx, householdId: string, conversationId: string, input: unknown): Promise<ProposalRef & { card: Card }>;
 }
 
-/** Kinds still to come in M3 (adjust, undo) register here too. */
+/** undo registers here too once it exists (M3). */
 export const PLANNERS: Partial<Record<ProposalKind, Planner>> = {
   intake: {
     // The app sends the full edited item list.
@@ -44,5 +45,14 @@ export const PLANNERS: Partial<Record<ProposalKind, Planner>> = {
       return { session_id: stored.session_id, usage: mergeOverrides(stored.usage, (changes as ReviseInput).usage) };
     },
     propose: (tx, householdId, conversationId, input) => proposeRevision(tx, householdId, conversationId, input as ReviseInput),
+  },
+  adjust: {
+    // The app edits the amount: a new delta or counted quantity replaces the old one.
+    Changes: AdjustInput.pick({ delta: true, set_quantity: true }),
+    merge: (input, changes) => {
+      const { delta: _delta, set_quantity: _set, ...rest } = input as AdjustInput;
+      return { ...rest, ...(changes as Pick<AdjustInput, 'delta' | 'set_quantity'>) };
+    },
+    propose: (tx, householdId, conversationId, input) => proposeAdjustment(tx, householdId, conversationId, input as AdjustInput),
   },
 };

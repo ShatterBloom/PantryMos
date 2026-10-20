@@ -6,6 +6,7 @@ import { registerGetSession } from './tools/getSession.ts';
 import { registerListInventory } from './tools/listInventory.ts';
 import { registerListRecentOperations } from './tools/listRecentOperations.ts';
 import { registerNextStep } from './tools/nextStep.ts';
+import { registerProposeAdjustment } from './tools/proposeAdjustment.ts';
 import { registerProposeConsumption } from './tools/proposeConsumption.ts';
 import { registerProposeConsumptionRevision } from './tools/proposeConsumptionRevision.ts';
 import { registerProposeIntake } from './tools/proposeIntake.ts';
@@ -35,6 +36,7 @@ export function buildMcpServer(ctx: ToolContext): McpServer {
   registerCancelCooking(server, ctx);
   registerProposeConsumption(server, ctx);
   registerProposeConsumptionRevision(server, ctx);
+  registerProposeAdjustment(server, ctx);
   registerListRecentOperations(server, ctx);
   return server;
 }

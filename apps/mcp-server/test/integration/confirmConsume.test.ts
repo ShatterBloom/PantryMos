@@ -1,4 +1,4 @@
-// Confirming consumption cards (§4.3): R1–R4, R16, R20, and the R8a race against a batch change.
+// Confirming consumption cards (§4.3): R1–R4, R16, R20, and a confirm racing a batch change (R8a).
 import { randomUUID } from 'node:crypto';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import pg from 'pg';
@@ -8,7 +8,7 @@ import { addDays } from '../../src/domain/dates.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import { TEST_ADMIN_URL } from '../../../../test/env.ts';
 import {
-  adjustBatch,
+  adjustStock,
   callWrite,
   connectMcpClient,
   createBatch,
@@ -171,7 +171,8 @@ describe('confirm consumption', () => {
 
   it('is stale when a pinned batch changed, even if another batch could cover it (R20, FR-17)', async () => {
     const p = await propose(); // 250 ml milk, pinned to batch A
-    await adjustBatch(kitchen.householdId, milkA, -1000); // A is thrown out; B still has 1000 ml
+    // A is thrown out; B still has 1000 ml.
+    expect((await adjustStock(servers, client, { batch_id: milkA, delta: -1000, reason: 'discard' })).status).toBe(200);
     const res = await confirm(p, 1);
     expect(res).toMatchObject({ status: 409, body: { code: 'stale_state', reason: 'batch_changed' } });
     expect(await consumeEvents()).toEqual([]);
@@ -197,23 +198,28 @@ describe('confirm consumption', () => {
     expect(await confirm(p, 1)).toMatchObject({ status: 409, body: { code: 'stale_state', reason: 'session_changed' } });
   });
 
-  it('serializes a confirm against a concurrent change to a pinned batch: no deadlock, no double use (R8a)', async () => {
-    const p = await propose();
+  it('serializes a confirm behind an adjustment confirm holding the pinned batch: no deadlock, no double use (R8a)', async () => {
+    const p = await propose(); // 250 ml milk from A
+    const adjust = (await callWrite(client, 'propose_adjustment', { batch_id: milkA, delta: -100, reason: 'discard' }))
+      .structuredContent as { proposal_id: string };
     const other = new pg.Client({ connectionString: TEST_ADMIN_URL });
     await other.connect();
     try {
-      // The other transaction holds batch A's row lock while it changes A...
+      // Hold batch A's row lock so the adjustment confirm queues on it first, then the consume confirm.
       await other.query('BEGIN');
-      await adjustBatch(kitchen.householdId, milkA, -100, other);
-      // ...so the confirm blocks on the same lock, then sees the new version and fails cleanly.
-      const pending = confirm(p, 1);
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await other.query(`SELECT 1 FROM pantry.batches WHERE id = $1 FOR UPDATE`, [milkA]);
+      const adjusting = confirm(adjust, 1);
+      await waitForLockWaiters(1);
+      const consuming = confirm(p, 1);
+      await waitForLockWaiters(2);
       await other.query('COMMIT');
-      expect(await pending).toMatchObject({ status: 409, body: { code: 'stale_state', reason: 'batch_changed' } });
+      expect((await adjusting).status).toBe(200);
+      expect(await consuming).toMatchObject({ status: 409, body: { code: 'stale_state', reason: 'batch_changed' } });
     } finally {
       await other.end();
     }
     expect(await quantity(milkA)).toBe(900);
+    expect(await consumeEvents()).toEqual([]);
     expect(await ledgerMismatches(kitchen.householdId)).toEqual([]);
   });
 

@@ -192,50 +192,6 @@ export async function stockKitchen(kitchen: DemoKitchen, stock: Record<string, n
 }
 
 /**
- * Changes a batch the way a committed adjustment would (M3 adds the real flow): an adjust event and
- * the matching quantity, version and status change, so I1 still holds. `client` lets a test run it
- * inside its own transaction to race a confirm.
- */
-export async function adjustBatch(householdId: string, batchId: string, delta: number, client?: pg.ClientBase): Promise<void> {
-  const run = async (db: pg.ClientBase) => {
-    const [proposalId, confirmationId, opId] = [randomUUID(), randomUUID(), randomUUID()];
-    const { rows } = await db.query<{ item_id: string }>(`SELECT item_id FROM pantry.batches WHERE id = $1 FOR UPDATE`, [batchId]);
-    await db.query(
-      `INSERT INTO pantry.proposals (id, household_id, conversation_id, kind, subject_key, input, payload, preconditions, status, expires_at)
-       VALUES ($1, $2, $3, 'adjust', $4, '{}', '{}', '{}', 'committed', now())`,
-      [proposalId, householdId, randomUUID(), `fixture:${proposalId}`],
-    );
-    await db.query(
-      `INSERT INTO pantry.confirmations (id, household_id, proposal_id, version, user_id, channel, request_id, outcome)
-       VALUES ($1, $2, $3, 1, 'fixture', 'ui_click', $4, 'committed')`,
-      [confirmationId, householdId, proposalId, randomUUID()],
-    );
-    await db.query(
-      `INSERT INTO pantry.operations (id, household_id, kind, proposal_id, proposal_version, confirmation_id, summary)
-       VALUES ($1, $2, 'adjust', $3, 1, $4, '{}')`,
-      [opId, householdId, proposalId, confirmationId],
-    );
-    await db.query(
-      `INSERT INTO pantry.inventory_events (id, household_id, operation_id, batch_id, item_id, delta, reason)
-       VALUES ($1, $2, $3, $4, $5, $6, 'adjust')`,
-      [randomUUID(), householdId, opId, batchId, rows[0]!.item_id, delta],
-    );
-    await db.query(
-      `UPDATE pantry.batches SET quantity = quantity + $2, version = version + 1,
-              status = CASE WHEN quantity + $2 = 0 THEN 'depleted' ELSE 'active' END
-        WHERE id = $1`,
-      [batchId, delta],
-    );
-  };
-  if (client) return run(client);
-  return withAdmin(async (admin) => {
-    await admin.query('BEGIN');
-    await run(admin);
-    await admin.query('COMMIT');
-  });
-}
-
-/**
  * Waits until `count` backends of the test database are blocked on a lock, so a test can line up
  * concurrent requests in a known order. Integration files run serially, so they are this test's.
  */
@@ -376,6 +332,14 @@ export async function eatMeal(
   const confirmed = await confirmCard(servers, proposal, proposal.version);
   if (confirmed.status !== 200) throw new Error(`confirm failed: ${JSON.stringify(confirmed.body)}`);
   return { sessionId, operationId: confirmed.body.operation_id as string };
+}
+
+/** Adjusts stock through the tools: propose_adjustment, then confirm the card. Returns the confirm response. */
+export async function adjustStock(servers: RunningServers, client: Client, args: Record<string, unknown>) {
+  const res = await callWrite(client, 'propose_adjustment', { reason: 'stock_check', ...args });
+  const proposal = res.structuredContent as { proposal_id: string; version: number } | undefined;
+  if (!proposal) throw new Error(`propose_adjustment failed: ${JSON.stringify(res.content)}`);
+  return confirmCard(servers, proposal, proposal.version);
 }
 
 export function mcpTestConfig(overrides: Partial<Config> = {}): Config {
