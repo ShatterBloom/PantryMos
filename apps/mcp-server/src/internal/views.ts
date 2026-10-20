@@ -12,7 +12,10 @@ export async function householdExists(q: Queryable, householdId: string): Promis
   return rowCount === 1;
 }
 
-/** What is in stock, as list_inventory reports it, plus the open shopping list. */
+/**
+ * What is in stock, as list_inventory reports it, plus the open shopping list: oldest first, and
+ * by name among rows added together (one call's rows share their created_at).
+ */
 export async function inventoryView(q: Queryable, householdId: string) {
   const today = await householdToday(q, householdId);
   const items = groupByItem(await activeBatches(q, householdId, today));
@@ -21,7 +24,7 @@ export async function inventoryView(q: Queryable, householdId: string) {
        FROM pantry.shopping_list_items s
        LEFT JOIN pantry.items i ON i.id = s.item_id
       WHERE s.household_id = $1 AND NOT s.done
-      ORDER BY s.created_at, s.id`,
+      ORDER BY s.created_at, COALESCE(i.name, s.free_text), s.id`,
     [householdId],
   );
   return {
