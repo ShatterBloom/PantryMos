@@ -45,9 +45,12 @@ export class InternalClient {
     return this.call('POST', `/internal/proposals/${proposalId}/regenerate`, body);
   }
 
+  /** The card as it stands; null only when there is no such card. Any other failure throws. */
   async view(proposalId: string): Promise<ProposalView | null> {
     const res = await this.call('GET', `/internal/proposals/${proposalId}`);
-    return res.status === 200 ? (res.body as unknown as ProposalView) : null;
+    if (res.status === 404) return null;
+    if (res.status !== 200) throw new Error(`Internal proposal view failed with ${res.status}`);
+    return res.body as unknown as ProposalView;
   }
 
   /** The web view's read models (§8.8), for the agent's household. */
