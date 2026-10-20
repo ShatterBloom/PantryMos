@@ -197,6 +197,25 @@ describe('propose_undo', () => {
     expect(row).toEqual({ quantity: 6, status: 'active' });
   });
 
+  it('undoes a meal that took no stock: no reversals, but the meal and its consume are reverted', async () => {
+    await stockKitchen(kitchen, { egg: 12 });
+    const none = ['egg', 'tomato', 'olive oil', 'scallion'].map((item) => ({ item, quantity: 0 }));
+    const { sessionId, operationId } = await eatMeal(servers, client, 'tomato egg stir-fry', none);
+
+    const p = await ok({ target: 'last' });
+    expect(p).toMatchObject({ scope: 'session', target: sessionId, card: { lines: [] } });
+    expect(p.card.readback_text).toMatch(/^I'll undo the whole tomato egg stir-fry meal, changing no stock\./);
+    const res = await confirmCard(servers, p, p.version);
+    expect(res.body.summary).toEqual({ scope: 'session', target: sessionId, reverted_operations: [operationId] });
+    expect(await sessionState(sessionId)).toBe('reverted');
+    expect(await eggs()).toBe(12);
+    const reverted = await withAdmin(async (admin) =>
+      (await admin.query(`SELECT reverted_by_op FROM pantry.operations WHERE id = $1`, [operationId])).rows[0].reverted_by_op,
+    );
+    expect(reverted).toBe(res.body.operation_id);
+    expect(parseErrorResult(await undo({ target: sessionId }))?.code).toBe('already_reverted');
+  });
+
   it('says there is nothing to undo in a kitchen with no history', async () => {
     const empty = await createDemoKitchen();
     const emptyClient = await connectMcpClient(servers, empty.token);

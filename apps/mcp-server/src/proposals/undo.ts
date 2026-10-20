@@ -5,6 +5,7 @@ import { batchesByIds, type BatchView } from '../db/inventory.ts';
 import {
   lastUndoable,
   liveEventsOfOperation,
+  liveMealOperations,
   liveEventsOfSession,
   liveRevisions,
   type OperationHead,
@@ -33,7 +34,7 @@ export interface UndoPayload {
   /** The operation (scope operation) or session (scope session) being undone. */
   target: string;
   reversals: Reversal[];
-  /** Operations whose events are all reverted once this commits. */
+  /** Operations reverted once this commits; one may have no events (a meal that took no stock). */
   reverted_operations: string[];
   card: Card;
 }
@@ -52,8 +53,8 @@ interface Resolved {
 
 /**
  * Proposes undoing a committed change (§7.4 propose_undo): every live event of the operation, or
- * every live consume and revision event of a meal, reversed. Inventory is unchanged until the card
- * is confirmed.
+ * every live consume and revision event of a meal, reversed. A meal that took no stock has none,
+ * and undoing it only reverts the session. Inventory is unchanged until the card is confirmed.
  */
 export async function proposeUndo(
   tx: Tx,
@@ -65,8 +66,8 @@ export async function proposeUndo(
   const { scope, operation, session } = resolved;
   const target = scope === 'session' ? session!.id : operation!.id;
 
+  // Already-undone targets were refused while resolving, so no events here means none were written.
   const events = scope === 'session' ? await liveEventsOfSession(tx, session!.id) : await liveEventsOfOperation(tx, operation!.id);
-  if (events.length === 0) throw alreadyReverted(scope === 'session' ? 'That meal' : 'That change');
   const reversals = reversalsOf(events);
 
   const today = await householdToday(tx, householdId);
@@ -78,7 +79,7 @@ export async function proposeUndo(
     scope,
     target,
     reversals,
-    reverted_operations: [...new Set(reversals.map((r) => r.operation_id))],
+    reverted_operations: scope === 'session' ? await liveMealOperations(tx, session!.id) : [operation!.id],
     card: renderCard(resolved, reversals, batches, items),
   };
   const preconditions: UndoPreconditions = {

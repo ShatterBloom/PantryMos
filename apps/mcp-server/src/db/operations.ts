@@ -92,6 +92,17 @@ export async function liveRevisions(q: Queryable, sessionId: string): Promise<st
   return rows.map((r) => r.id);
 }
 
+/** A meal's consume and revisions not yet reverted, with or without events: what undoing the meal reverts. */
+export async function liveMealOperations(q: Queryable, sessionId: string): Promise<string[]> {
+  const { rows } = await q.query<{ id: string }>(
+    `SELECT id FROM pantry.operations
+      WHERE session_id = $1 AND kind IN ('consume', 'revise_consumption') AND reverted_by_op IS NULL
+      ORDER BY created_at, id`,
+    [sessionId],
+  );
+  return rows.map((r) => r.id);
+}
+
 /** The household's most recent operations, newest first. */
 export async function recentOperations(q: Queryable, householdId: string, limit: number): Promise<OperationRow[]> {
   const { rows } = await q.query<Omit<OperationRow, 'changes'> & { changes: Array<{ item_id: string; delta: string }> }>(
