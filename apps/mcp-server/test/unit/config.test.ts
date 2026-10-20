@@ -51,6 +51,15 @@ describe('mcp-server loadConfig', () => {
     expect(() => loadConfig({ ...REQUIRED, SERVICE_TOKEN: 'short' })).toThrow(/at least 16/);
   });
 
+  it('accepts loopback bind hosts only (S4)', () => {
+    for (const host of ['127.0.0.1', '::1', 'localhost']) {
+      expect(loadConfig({ ...REQUIRED, MCP_BIND_HOST: host }).bindHost).toBe(host);
+    }
+    for (const host of ['0.0.0.0', '::', '10.0.0.5', 'example.com']) {
+      expect(() => loadConfig({ ...REQUIRED, MCP_BIND_HOST: host })).toThrow(/loopback/);
+    }
+  });
+
   it('rejects out-of-range ports', () => {
     expect(() => loadConfig({ ...REQUIRED, MCP_PORT: '70000' })).toThrow();
     expect(() => loadConfig({ ...REQUIRED, INTERNAL_PORT: '-1' })).toThrow();

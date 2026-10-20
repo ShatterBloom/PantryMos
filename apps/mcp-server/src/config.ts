@@ -5,9 +5,16 @@ const csv = z
   .default('')
   .transform((s) => s.split(',').map((x) => x.trim()).filter(Boolean));
 
+// Both listeners must stay on loopback (IMPLEMENTATION_PLAN §11.1); the agent reaches them
+// through the shared network namespace, never over a routable address.
+const LOOPBACK_HOSTS = ['127.0.0.1', '::1', 'localhost'];
+
 const ConfigSchema = z.object({
   databaseUrl: z.string().min(1),
-  bindHost: z.string().default('127.0.0.1'),
+  bindHost: z
+    .string()
+    .default('127.0.0.1')
+    .refine((host) => LOOPBACK_HOSTS.includes(host), 'MCP_BIND_HOST must be a loopback address'),
   mcpPort: z.coerce.number().int().min(0).max(65535).default(7410),
   internalPort: z.coerce.number().int().min(0).max(65535).default(7411),
   serviceToken: z.string().min(16, 'SERVICE_TOKEN must be at least 16 characters'),
