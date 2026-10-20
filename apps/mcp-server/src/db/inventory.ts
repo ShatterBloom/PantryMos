@@ -9,6 +9,8 @@ export interface BatchView {
   item: string;
   unit: BaseUnit;
   quantity: number;
+  /** Bumped on every quantity or status change; proposals pin it (§4.2). */
+  version: number;
   priority_date: string;
   priority_source: 'package' | 'estimate';
   date_label: string;
@@ -20,6 +22,7 @@ interface Row {
   item: string;
   unit: BaseUnit;
   quantity: string;
+  version: number;
   purchased_at: string;
   opened_at: string | null;
   package_date: string | null;
@@ -30,24 +33,24 @@ interface Row {
 
 /**
  * Active batches with stock, in FEFO order: (priority_date, purchased_at, id), the same order
- * allocation uses (§6.2). Optionally one item, and/or only batches due by `priorityUntil`.
+ * allocation uses (§6.2). Optionally only some items, and/or only batches due by `priorityUntil`.
  */
 export async function activeBatches(
   q: Queryable,
   householdId: string,
   today: string,
-  filter: { itemId?: string; priorityUntil?: string } = {},
+  filter: { itemIds?: readonly string[]; priorityUntil?: string } = {},
 ): Promise<BatchView[]> {
   const { rows } = await q.query<Row>(
     `SELECT b.id AS batch_id, i.id AS item_id, i.name AS item, i.base_unit AS unit, b.quantity::text AS quantity,
-            b.purchased_at, b.opened_at, b.package_date, b.package_date_type, b.priority_date, b.priority_source
+            b.version, b.purchased_at, b.opened_at, b.package_date, b.package_date_type, b.priority_date, b.priority_source
        FROM pantry.batches b
        JOIN pantry.items i ON i.id = b.item_id
       WHERE b.household_id = $1 AND b.status = 'active' AND b.quantity > 0
-        AND ($2::uuid IS NULL OR b.item_id = $2)
+        AND ($2::uuid[] IS NULL OR b.item_id = ANY ($2))
         AND ($3::date IS NULL OR b.priority_date <= $3)
       ORDER BY b.priority_date, b.purchased_at, b.id`,
-    [householdId, filter.itemId ?? null, filter.priorityUntil ?? null],
+    [householdId, filter.itemIds ?? null, filter.priorityUntil ?? null],
   );
   return rows.map((r) => ({
     batch_id: r.batch_id,
@@ -55,6 +58,7 @@ export async function activeBatches(
     item: r.item,
     unit: r.unit,
     quantity: Number(r.quantity),
+    version: r.version,
     priority_date: r.priority_date,
     priority_source: r.priority_source,
     date_label: dateLabel(r, today),

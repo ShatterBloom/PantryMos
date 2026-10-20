@@ -38,3 +38,11 @@ export function stepOut(step: Step, totalSteps: number) {
     timer_label: step.timer_label,
   };
 }
+
+/** A proposal card (§7.4 propose output); `readback_text` is what the ConfirmGate reads aloud. */
+export const CardOut = z.object({
+  title: z.string(),
+  lines: z.array(z.string()),
+  warnings: z.array(z.string()),
+  readback_text: z.string(),
+});

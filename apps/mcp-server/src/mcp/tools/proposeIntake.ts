@@ -5,7 +5,7 @@ import { upsertProposal } from '../../db/proposals.ts';
 import { MAX_QUANTITY, planIntake } from '../../domain/intake.ts';
 import { CATEGORIES } from '../../domain/items.ts';
 import type { ToolContext } from '../context.ts';
-import { NameInput } from '../schemas.ts';
+import { CardOut, NameInput } from '../schemas.ts';
 import { runWriteTool } from '../toolkit.ts';
 
 const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'use YYYY-MM-DD');
@@ -32,13 +32,6 @@ const IntakeItem = z.object({
     .object({ unit: UnitInput, base_qty: Quantity })
     .optional()
     .describe('Only after needs_clarification about a package unit, e.g. {"unit": "carton", "base_qty": 12}.'),
-});
-
-const CardOut = z.object({
-  title: z.string(),
-  lines: z.array(z.string()),
-  warnings: z.array(z.string()),
-  readback_text: z.string(),
 });
 
 export function registerProposeIntake(server: McpServer, ctx: ToolContext): void {

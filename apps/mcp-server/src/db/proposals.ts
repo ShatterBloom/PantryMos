@@ -143,3 +143,17 @@ async function insertVersion(tx: Tx, proposalId: string, version: number, draft:
 
 const json = (value: unknown) => JSON.stringify(value);
 const iso = (value: Date) => value.toISOString();
+
+/** The current copy of the pending proposal for a subject, if any (no lock). */
+export async function pendingProposal(
+  tx: Tx,
+  householdId: string,
+  subjectKey: string,
+): Promise<{ id: string; version: number; payload: unknown; preconditions: unknown } | null> {
+  const { rows } = await tx.query<{ id: string; version: number; payload: unknown; preconditions: unknown }>(
+    `SELECT id, version, payload, preconditions FROM pantry.proposals
+      WHERE household_id = $1 AND subject_key = $2 AND status = 'pending' AND expires_at > now()`,
+    [householdId, subjectKey],
+  );
+  return rows[0] ?? null;
+}

@@ -1,6 +1,7 @@
 // Intake planning (IMPLEMENTATION_PLAN §4.2, §6.1, §7.4): turns a spoken purchase list into a pinned
 // card, or a business error naming exactly what to ask. Pure: no I/O, no clock (`today` is passed in).
 import type { ErrorCode } from '@pantrymos/shared';
+import { type Card, CONFIRM_PROMPT } from './card.ts';
 import { dateLabel, formatShort, type PackageDateType, validateBatchDates } from './dates.ts';
 import { PantryError } from './errors.ts';
 import {
@@ -66,13 +67,6 @@ export interface IntakeLine extends ItemRef {
   priority_date: string;
   priority_source: 'package' | 'estimate';
   date_label: string;
-}
-
-export interface Card {
-  title: string;
-  lines: string[];
-  warnings: string[];
-  readback_text: string;
 }
 
 export interface IntakePayload {
@@ -294,7 +288,7 @@ function renderCard(lines: IntakeLine[], newItems: NewItem[], conversions: NewCo
   const sentences = [`I'll add ${listAnd(spoken)}.`];
   if (newItems.length > 0) sentences.push(`New ${newItems.length === 1 ? 'item' : 'items'}: ${listAnd(newItems.map((i) => i.name))}.`);
   if (conversions.length > 0) sentences.push(`I'll remember that ${listAnd(conversions.map(conversionPhrase))}.`);
-  sentences.push('Say confirm, or tell me what to change.');
+  sentences.push(CONFIRM_PROMPT);
 
   return {
     title: 'Add groceries',

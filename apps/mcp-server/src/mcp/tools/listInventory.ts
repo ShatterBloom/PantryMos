@@ -53,7 +53,9 @@ export function registerListInventory(server: McpServer, ctx: ToolContext): void
           itemId = resolution.item.id;
         }
 
-        const items = groupByItem(await activeBatches(ctx.pool, householdId, today, { itemId }));
+        const items = groupByItem(
+          await activeBatches(ctx.pool, householdId, today, itemId === undefined ? {} : { itemIds: [itemId] }),
+        );
         const text =
           items.length > 0
             ? items.map((i) => `${i.item}: ${i.total} ${i.unit}`).join('; ')

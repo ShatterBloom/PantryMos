@@ -24,6 +24,7 @@ const EXPECTED_ANNOTATIONS: Record<string, { readOnlyHint: boolean; destructiveH
   substitute: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
   skip_ingredient: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
   cancel_cooking: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  propose_consumption: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
 };
 
 describe('MCP server over Streamable HTTP', () => {

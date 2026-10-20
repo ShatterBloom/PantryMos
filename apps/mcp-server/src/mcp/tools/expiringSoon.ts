@@ -28,7 +28,7 @@ export function registerExpiringSoon(server: McpServer, ctx: ToolContext): void 
         const today = await householdToday(ctx.pool, householdId);
         const batches = (
           await activeBatches(ctx.pool, householdId, today, { priorityUntil: addDays(today, within_days) })
-        ).map(({ item_id: _itemId, ...batch }) => batch);
+        ).map(({ item_id: _itemId, version: _version, ...batch }) => batch);
         const text =
           batches.length === 0
             ? `Nothing needs using up in the next ${within_days} days.`
