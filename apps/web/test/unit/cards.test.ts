@@ -53,6 +53,13 @@ describe('editChanges', () => {
 });
 
 describe('optionLabel', () => {
+  it('reads labelled choices first: undo scopes and has_dependents', () => {
+    // mcp-server domain/undo.ts and proposals/undo.ts
+    expect(optionLabel({ scope: 'operation', target: 'op-1', label: 'undo the correction' })).toBe('undo the correction');
+    expect(optionLabel({ scope: 'session', target: 's-1', label: 'undo the whole meal' })).toBe('undo the whole meal');
+    expect(optionLabel({ label: 'x', name: 'y' })).toBe('x');
+  });
+
   it('reads names, suggestions, batches and substitutes', () => {
     expect(optionLabel('cherry tomato')).toBe('cherry tomato');
     expect(optionLabel({ batch_id: 'b1', quantity: 4, date_label: 'stored for 3 days, no package date' })).toBe(

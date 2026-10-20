@@ -29,12 +29,14 @@ export function editableAmounts(editable: NonNullable<Editable>): number[] {
 
 /**
  * What an options card's button says, and what tapping it sends as the user's answer: options are
- * names ("cherry tomato"), suggestions ("make fewer servings") or batches ({date_label}).
+ * names ("cherry tomato"), suggestions ("make fewer servings"), labelled choices ({label}, e.g. an
+ * undo scope) or batches ({date_label}).
  */
 export function optionLabel(option: unknown): string | null {
   if (typeof option === 'string') return option;
   if (option && typeof option === 'object') {
     const o = option as Record<string, unknown>;
+    if (typeof o.label === 'string') return o.label;
     if (typeof o.date_label === 'string') return o.date_label === 'new batch' ? 'a new batch' : `the one ${o.date_label}`;
     if (typeof o.name === 'string') return o.name;
     if (typeof o.item === 'string') return o.item;
