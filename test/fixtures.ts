@@ -230,6 +230,30 @@ export function callWrite(
   });
 }
 
+/** Everything creamy spinach pasta for 3 needs (the demo dish), with scallions. */
+export const PASTA_STOCK: Record<string, number> = {
+  pasta: 500,
+  spinach: 300,
+  milk: 1000,
+  garlic: 5,
+  butter: 100,
+  parmesan: 100,
+  scallion: 4,
+};
+
+/** Stocks the kitchen for the demo dish and starts it; returns the session id. */
+export async function startPasta(
+  kitchen: DemoKitchen,
+  client: Client,
+  stock: Record<string, number> = PASTA_STOCK,
+): Promise<string> {
+  await stockKitchen(kitchen, stock);
+  const res = await callWrite(client, 'start_cooking', { recipe_name: 'creamy spinach pasta' });
+  const out = res.structuredContent as { session_id?: string } | undefined;
+  if (!out?.session_id) throw new Error(`start_cooking failed: ${JSON.stringify(res.content)}`);
+  return out.session_id;
+}
+
 export function mcpTestConfig(overrides: Partial<Config> = {}): Config {
   return {
     databaseUrl: TEST_MCP_DB_URL,

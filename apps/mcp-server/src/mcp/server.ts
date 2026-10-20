@@ -3,6 +3,7 @@ import type { ToolContext } from './context.ts';
 import { registerExpiringSoon } from './tools/expiringSoon.ts';
 import { registerGetSession } from './tools/getSession.ts';
 import { registerListInventory } from './tools/listInventory.ts';
+import { registerNextStep } from './tools/nextStep.ts';
 import { registerProposeIntake } from './tools/proposeIntake.ts';
 import { registerStartCooking } from './tools/startCooking.ts';
 
@@ -20,5 +21,6 @@ export function buildMcpServer(ctx: ToolContext): McpServer {
   registerProposeIntake(server, ctx);
   registerStartCooking(server, ctx);
   registerGetSession(server, ctx);
+  registerNextStep(server, ctx);
   return server;
 }
