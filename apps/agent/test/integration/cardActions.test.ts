@@ -67,6 +67,18 @@ describe('card actions and the /api surface', () => {
     expect(message.speech).not.toMatch(/tomato/);
   });
 
+  it('reads a card back once, though the model repeated the read-back', async () => {
+    await stockKitchen(kitchen, { egg: 12 });
+    agent.model.push(callTools(['propose_adjustment', { item: 'egg', delta: -2, reason: 'discard' }]), (req) => {
+      const { card } = lastToolResults(req)[0] as { card: { readback_text: string } };
+      return say(`Got it. ${card.readback_text}`);
+    });
+    await chat(agent, 'I dropped two eggs');
+    const { speech } = await lastMessage(agent);
+    expect(speech).toMatch(/^Got it\. I'll record that 2 eggs were thrown out\./);
+    expect(speech.match(/Say confirm/g)).toHaveLength(1);
+  });
+
   it('rejects a card by button and records it for the next turn', async () => {
     const card = await discardCard();
     const res = await cardAction(agent, 'POST', `/api/proposals/${card.proposal_id}/reject`, { version: 1 });

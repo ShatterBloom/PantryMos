@@ -268,7 +268,9 @@ async function finishTurn(
   let voicePrompt: VoicePrompt | null = null;
   if (proposal) {
     cards.push({ type: 'proposal', ...pick(proposal, ['proposal_id', 'version', 'kind', 'card', 'expires_at']) });
-    speech = `${speech} ${(proposal.card as { readback_text: string }).readback_text}`.trim();
+    const readback = (proposal.card as { readback_text: string }).readback_text;
+    // The model may repeat the read-back from the tool result; it is said once, last (§8.5).
+    speech = `${speech.split(readback).join(' ').replace(/\s+/g, ' ').trim()} ${readback}`.trim();
     voicePrompt = { kind: 'proposal_confirm', proposal_id: proposal.proposal_id as string, version: proposal.version as number };
   }
   // A card read-back takes precedence over a timer offer in the same message (§8.2).
