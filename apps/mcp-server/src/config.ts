@@ -23,6 +23,7 @@ const ConfigSchema = z.object({
   bodyLimitBytes: z.coerce.number().int().positive().default(64 * 1024),
   mcpRatePerMinute: z.coerce.number().int().positive().default(120),
   internalRatePerMinute: z.coerce.number().int().positive().default(300),
+  confirmRatePerMinute: z.coerce.number().int().positive().default(30),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -39,5 +40,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     bodyLimitBytes: env.MCP_BODY_LIMIT_BYTES,
     mcpRatePerMinute: env.MCP_RATE_PER_MINUTE,
     internalRatePerMinute: env.INTERNAL_RATE_PER_MINUTE,
+    confirmRatePerMinute: env.CONFIRM_RATE_PER_MINUTE,
   });
 }

@@ -187,6 +187,7 @@ export function mcpTestConfig(overrides: Partial<Config> = {}): Config {
     bodyLimitBytes: 64 * 1024,
     mcpRatePerMinute: 1000,
     internalRatePerMinute: 1000,
+    confirmRatePerMinute: 1000,
     ...overrides,
   };
 }

@@ -1,6 +1,8 @@
 import rateLimit from '@fastify/rate-limit';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import { z } from 'zod';
+import { ConfirmBody, confirmProposal, proposalHousehold } from './commit/confirm.ts';
 import type { Config } from './config.ts';
 import { createPool, type Pool } from './db/pool.ts';
 import { buildMcpServer } from './mcp/server.ts';
@@ -94,6 +96,35 @@ export async function buildInternalApp(config: Config, pool: Pool, log = true): 
     await pool.query('SELECT 1');
     return { ok: true };
   });
+
+  const ProposalParams = z.object({ id: z.uuid() });
+
+  app.post(
+    '/internal/proposals/:id/confirm',
+    {
+      config: {
+        // §11.5: confirm is limited per household, whichever app or channel it comes from.
+        rateLimit: {
+          max: config.confirmRatePerMinute,
+          timeWindow: '1 minute',
+          keyGenerator: async (request: FastifyRequest) => {
+            const params = ProposalParams.safeParse(request.params);
+            const household = params.success ? await proposalHousehold(pool, params.data.id) : null;
+            return household ? `confirm:${household}` : `confirm-ip:${request.ip}`;
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = ProposalParams.safeParse(request.params);
+      const body = ConfirmBody.safeParse(request.body);
+      if (!params.success || !body.success) {
+        return reply.code(400).send({ error: 'bad_request', issues: [...(params.error?.issues ?? []), ...(body.error?.issues ?? [])] });
+      }
+      const outcome = await confirmProposal(pool, params.data.id, body.data);
+      return reply.code(outcome.status).send(outcome.body);
+    },
+  );
 
   return app;
 }

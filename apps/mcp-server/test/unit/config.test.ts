@@ -19,6 +19,7 @@ describe('mcp-server loadConfig', () => {
       bodyLimitBytes: 64 * 1024,
       mcpRatePerMinute: 120,
       internalRatePerMinute: 300,
+      confirmRatePerMinute: 30,
     });
   });
 

@@ -28,6 +28,13 @@ export const ERROR_CODES = [
   'not_undoable',
   'would_go_negative',
   'proposal_conflict',
+  // Internal confirm/commit outcomes (§4.3).
+  'not_found',
+  'already_committed',
+  'not_pending',
+  'stale_proposal',
+  'stale_state',
+  'expired',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
