@@ -3,12 +3,13 @@ import type { AddressInfo } from 'node:net';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import pg from 'pg';
-import { sha256Hex } from '@pantrymos/shared';
+import { META_CONVERSATION_ID, META_REQUEST_ID, sha256Hex } from '@pantrymos/shared';
 import type { RunningServers } from '../apps/mcp-server/src/app.ts';
 import type { Config } from '../apps/mcp-server/src/config.ts';
 import type { PackageDateType } from '../apps/mcp-server/src/domain/dates.ts';
 import type { BaseUnit, Category } from '../apps/mcp-server/src/domain/items.ts';
 import { priorityOf } from '../apps/mcp-server/src/domain/priority.ts';
+import { seedDemo } from '../scripts/lib/seed.ts';
 import { TEST_ADMIN_URL, TEST_MCP_DB_URL } from './env.ts';
 
 export const TEST_SERVICE_TOKEN = 'test-service-token-0123456789';
@@ -153,6 +154,43 @@ export async function createBatch(householdId: string, itemId: string, spec: Bat
   });
 }
 
+export interface DemoKitchen extends HouseholdFixture {
+  /** Catalog item ids by name. */
+  items: Record<string, string>;
+}
+
+/** A household with the real demo catalog and recipes (the seed), and no stock yet. */
+export async function createDemoKitchen(timezone?: string): Promise<DemoKitchen> {
+  const hh = await createHousehold(timezone);
+  return withAdmin(async (admin) => {
+    await seedDemo(admin, { householdId: hh.householdId, householdName: 'Test kitchen', inspector: false });
+    const { rows } = await admin.query<{ id: string; name: string }>(
+      `SELECT id, name FROM pantry.items WHERE household_id = $1`,
+      [hh.householdId],
+    );
+    return { ...hh, items: Object.fromEntries(rows.map((r) => [r.name, r.id])) };
+  });
+}
+
+/** Adds one batch per entry (base units), bought `daysAgo` days before today, via createBatch. */
+export async function stockKitchen(kitchen: DemoKitchen, stock: Record<string, number>, daysAgo = 1): Promise<Record<string, string>> {
+  const tz = await withAdmin(async (admin) => {
+    const { rows } = await admin.query<{ timezone: string }>(`SELECT timezone FROM pantry.households WHERE id = $1`, [
+      kitchen.householdId,
+    ]);
+    return rows[0]!.timezone;
+  });
+  const today = await todayIn(tz);
+  const purchased = new Date(Date.parse(`${today}T00:00:00Z`) - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  const batches: Record<string, string> = {};
+  for (const [name, quantity] of Object.entries(stock)) {
+    const itemId = kitchen.items[name];
+    if (!itemId) throw new Error(`Unknown demo item ${name}`);
+    batches[name] = await createBatch(kitchen.householdId, itemId, { quantity, purchased_at: purchased });
+  }
+  return batches;
+}
+
 /** "Today" in a timezone, computed by Postgres the same way the server does. */
 export async function todayIn(timezone: string): Promise<string> {
   return withAdmin(async (admin) => {
@@ -173,6 +211,23 @@ export async function connectMcpClient(servers: RunningServers, token: string): 
     }),
   );
   return client;
+}
+
+/** Calls a write tool with fresh (or given) request and conversation ids in `_meta`. */
+export function callWrite(
+  client: Client,
+  name: string,
+  args: Record<string, unknown>,
+  ids: { requestId?: string; conversationId?: string } = {},
+) {
+  return client.callTool({
+    name,
+    arguments: args,
+    _meta: {
+      [META_REQUEST_ID]: ids.requestId ?? randomUUID(),
+      [META_CONVERSATION_ID]: ids.conversationId ?? randomUUID(),
+    },
+  });
 }
 
 export function mcpTestConfig(overrides: Partial<Config> = {}): Config {
