@@ -50,4 +50,17 @@ describe('Bedrock Converse mapping', () => {
     });
     expect(fromConverseOutput({ stopReason: undefined, output: undefined } as never)).toEqual({ stopReason: 'end_turn', content: [] });
   });
+
+  it("strips Nova's <thinking> text so it is never spoken", () => {
+    const reply = (...texts: string[]) =>
+      fromConverseOutput({ stopReason: 'end_turn', output: { message: { role: 'assistant', content: texts.map((text) => ({ text })) } } })
+        .content;
+    // As Nova Pro answered a live Converse call: thinking, then the tool use (here, nothing else).
+    expect(reply('<thinking> I need the get_inventory tool to check for eggs. </thinking>\n')).toEqual([]);
+    expect(reply('<thinking>a</thinking> You have 6 eggs. <thinking>b\nc</thinking>Anything else?')).toEqual([
+      { text: 'You have 6 eggs. Anything else?' },
+    ]);
+    // Cut off by the token cap: no closing tag.
+    expect(reply('Sure. <thinking> the user wants', 'Done.')).toEqual([{ text: 'Sure.' }, { text: 'Done.' }]);
+  });
 });

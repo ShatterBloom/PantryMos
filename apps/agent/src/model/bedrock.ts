@@ -50,11 +50,20 @@ function toBedrockBlock(block: ContentBlock): BedrockBlock {
   };
 }
 
+/**
+ * Nova writes its chain of thought into the text as `<thinking>…</thinking>`; left in, it would be
+ * spoken. A block cut off by the token cap has no closing tag, so it runs to the end of the text.
+ */
+const THINKING = /<thinking>[\s\S]*?(?:<\/thinking>|$)/g;
+
 /** The model's reply in the turn loop's shape; blocks it does not use (reasoning, images) are dropped. */
 export function fromConverseOutput(output: Pick<ConverseCommandOutput, 'stopReason' | 'output'>): ModelResponse {
   const content: ContentBlock[] = [];
   for (const block of output.output?.message?.content ?? []) {
-    if (block.text !== undefined) content.push({ text: block.text });
+    if (block.text !== undefined) {
+      const text = block.text.replace(THINKING, '').trim();
+      if (text !== '') content.push({ text });
+    }
     else if (block.toolUse) {
       content.push({ toolUse: { toolUseId: block.toolUse.toolUseId!, name: block.toolUse.name!, input: block.toolUse.input ?? {} } });
     }
