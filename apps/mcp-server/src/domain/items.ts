@@ -1,5 +1,6 @@
 // Item resolution (IMPLEMENTATION_PLAN §6.1): exact name → alias → singular/plural, case-insensitive.
 import { PantryError } from './errors.ts';
+import { listOr } from './speech.ts';
 import { levenshtein, normalizeName, singular } from './text.ts';
 
 export type BaseUnit = 'count' | 'g' | 'ml';
@@ -58,11 +59,6 @@ function suggest(name: string, catalog: readonly CatalogItem[]): string[] {
     .sort((a, b) => a.distance - b.distance || a.name.localeCompare(b.name))
     .slice(0, MAX_SUGGESTIONS)
     .map((s) => s.name);
-}
-
-/** "a, b or c" */
-export function listOr(names: readonly string[]): string {
-  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`;
 }
 
 export function ambiguousItemError(spoken: string, options: readonly CatalogItem[]): PantryError {

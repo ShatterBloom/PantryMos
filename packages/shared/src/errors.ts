@@ -8,6 +8,7 @@ export const ERROR_CODES = [
   'ambiguous_item',
   'unit_mismatch',
   'invalid_date',
+  'invalid_quantity',
   'insufficient_stock',
   'no_active_session',
   'session_in_progress',

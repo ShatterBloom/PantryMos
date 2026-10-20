@@ -17,6 +17,7 @@ import {
 const EXPECTED_ANNOTATIONS: Record<string, { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean }> = {
   list_inventory: { readOnlyHint: true },
   expiring_soon: { readOnlyHint: true },
+  propose_intake: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
 };
 
 describe('MCP server over Streamable HTTP', () => {
