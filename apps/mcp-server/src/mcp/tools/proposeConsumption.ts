@@ -1,9 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { MAX_QUANTITY } from '../../domain/intake.ts';
-import { proposeConsumption } from '../../proposals/consume.ts';
+import { ConsumeOverrides, proposeConsumption } from '../../proposals/consume.ts';
 import type { ToolContext } from '../context.ts';
-import { CardOut, NameInput } from '../schemas.ts';
+import { CardOut } from '../schemas.ts';
 import { runWriteTool } from '../toolkit.ts';
 
 export function registerProposeConsumption(server: McpServer, ctx: ToolContext): void {
@@ -17,10 +16,7 @@ export function registerProposeConsumption(server: McpServer, ctx: ToolContext):
         'Use overrides when the user says they used a different amount, e.g. [{"item": "egg", "quantity": 3}]; 0 removes a line.',
       inputSchema: {
         session_id: z.uuid().optional(),
-        overrides: z
-          .array(z.object({ item: NameInput, quantity: z.number().min(0).max(MAX_QUANTITY).describe('Base units') }))
-          .max(20)
-          .optional(),
+        overrides: ConsumeOverrides.optional(),
       },
       outputSchema: {
         proposal_id: z.string(),

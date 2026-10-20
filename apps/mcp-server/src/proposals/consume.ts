@@ -1,5 +1,6 @@
 // Consumption proposals (IMPLEMENTATION_PLAN §3.1, §4.2, §6.4): what the user used, pinned to batches.
 import { canonicalJson } from '@pantrymos/shared';
+import { z } from 'zod';
 import { householdToday, loadCatalog } from '../db/catalog.ts';
 import { activeBatches, type BatchView } from '../db/inventory.ts';
 import { pendingProposal, type ProposalRef, upsertProposal } from '../db/proposals.ts';
@@ -9,8 +10,16 @@ import { type AllocationLine, allocateFefo } from '../domain/allocation.ts';
 import { type Card, CONFIRM_PROMPT } from '../domain/card.ts';
 import { demandByItem } from '../domain/cooking.ts';
 import { PantryError } from '../domain/errors.ts';
+import { MAX_QUANTITY } from '../domain/intake.ts';
 import { type BaseUnit, findItem } from '../domain/items.ts';
 import { listAnd, speakQuantity } from '../domain/speech.ts';
+import { normalizeName } from '../domain/text.ts';
+import { NameInput } from '../mcp/schemas.ts';
+
+/** "I used 3 eggs": a total for one item, in base units; 0 removes the line. */
+export const ConsumeOverrides = z
+  .array(z.object({ item: NameInput, quantity: z.number().min(0).max(MAX_QUANTITY).describe('Base units') }))
+  .max(20);
 
 export interface ConsumeInput {
   session_id?: string | undefined;
@@ -140,4 +149,14 @@ function renderCard(lines: readonly ConsumeLine[], allocation: readonly Allocati
         ? `I'll record ${listAnd(spoken)}. ${CONFIRM_PROMPT}`
         : `There's nothing from the pantry to record. ${CONFIRM_PROMPT}`,
   };
+}
+
+/** Card edits add to earlier overrides; a later amount for the same item replaces the earlier one. */
+export function mergeOverrides(
+  earlier: ReadonlyArray<{ item: string; quantity: number }>,
+  later: ReadonlyArray<{ item: string; quantity: number }>,
+): Array<{ item: string; quantity: number }> {
+  const byName = new Map<string, { item: string; quantity: number }>();
+  for (const o of [...earlier, ...later]) byName.set(normalizeName(o.item), o);
+  return [...byName.values()];
 }

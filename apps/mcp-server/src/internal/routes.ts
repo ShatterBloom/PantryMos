@@ -2,6 +2,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ConfirmBody, confirmProposal } from '../commit/confirm.ts';
+import { EditBody, editProposal, RegenerateBody, regenerateProposal } from '../commit/edit.ts';
 import { proposalHousehold } from '../commit/lock.ts';
 import { RejectBody, rejectProposal } from '../commit/reject.ts';
 import type { Config } from '../config.ts';
@@ -46,4 +47,6 @@ export function registerInternalRoutes(app: FastifyInstance, pool: Pool, config:
   );
 
   app.post('/internal/proposals/:id/reject', action(RejectBody, (id, body) => rejectProposal(pool, id, body)));
+  app.patch('/internal/proposals/:id', action(EditBody, (id, body) => editProposal(pool, id, body)));
+  app.post('/internal/proposals/:id/regenerate', action(RegenerateBody, (id, body) => regenerateProposal(pool, id, body)));
 }

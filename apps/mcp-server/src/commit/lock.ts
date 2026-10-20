@@ -1,14 +1,21 @@
 // Shared entry for user actions on a card (confirm, reject, edit): lock it and check it can be acted on.
 import type { Pool } from '../db/pool.ts';
+import type { ProposalKind } from '../db/proposals.ts';
 import type { Tx } from '../db/tx.ts';
 import { PantryError } from '../domain/errors.ts';
 import type { LockedProposal } from './types.ts';
 
+/** Household and kind of a proposal (both immutable), read before any transaction. */
+export async function proposalHead(pool: Pool, proposalId: string): Promise<{ household_id: string; kind: ProposalKind } | null> {
+  const { rows } = await pool.query<{ household_id: string; kind: ProposalKind }>(
+    `SELECT household_id, kind FROM pantry.proposals WHERE id = $1`,
+    [proposalId],
+  );
+  return rows[0] ?? null;
+}
+
 export async function proposalHousehold(pool: Pool, proposalId: string): Promise<string | null> {
-  const { rows } = await pool.query<{ household_id: string }>(`SELECT household_id FROM pantry.proposals WHERE id = $1`, [
-    proposalId,
-  ]);
-  return rows[0]?.household_id ?? null;
+  return (await proposalHead(pool, proposalId))?.household_id ?? null;
 }
 
 export const notFound = () => ({ status: 404, body: new PantryError('not_found', 'No such proposal.').toBody() });
