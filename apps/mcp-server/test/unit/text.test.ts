@@ -22,6 +22,8 @@ describe('singular', () => {
     ['pies', 'pie'],
     ['cartons', 'carton'],
     ['scallions', 'scallion'],
+    ['kiwis', 'kiwi'],
+    ['spaghettis', 'spaghetti'],
   ])('%s → %s', (word, expected) => {
     expect(singular(word)).toBe(expected);
   });

@@ -9,7 +9,7 @@ export function normalizeName(raw: string): string {
 export function singular(word: string): string {
   if (/[^aeiou]ies$/.test(word) && word.length > 4) return `${word.slice(0, -3)}y`;
   if (/(?:ch|sh|ss|x|z|[^aeiou]o)es$/.test(word)) return word.slice(0, -2);
-  if (/[^s]s$/.test(word) && !/(?:us|is)$/.test(word)) return word.slice(0, -1);
+  if (/[^s]s$/.test(word) && !/us$/.test(word)) return word.slice(0, -1);
   return word;
 }
 
