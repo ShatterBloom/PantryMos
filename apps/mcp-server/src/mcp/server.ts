@@ -10,6 +10,7 @@ import { registerProposeIntake } from './tools/proposeIntake.ts';
 import { registerSkipIngredient } from './tools/skipIngredient.ts';
 import { registerStartCooking } from './tools/startCooking.ts';
 import { registerSubstitute } from './tools/substitute.ts';
+import { registerSuggestRecipes } from './tools/suggestRecipes.ts';
 
 export const SERVER_INFO = { name: 'pantrymos', version: '0.1.0' } as const;
 
@@ -23,6 +24,7 @@ export function buildMcpServer(ctx: ToolContext): McpServer {
   registerListInventory(server, ctx);
   registerExpiringSoon(server, ctx);
   registerProposeIntake(server, ctx);
+  registerSuggestRecipes(server, ctx);
   registerStartCooking(server, ctx);
   registerGetSession(server, ctx);
   registerNextStep(server, ctx);
