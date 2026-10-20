@@ -22,9 +22,13 @@ export function ProposalCardView(props: { card: ProposalCard; status: ProposalSt
   const run = async (fn: () => Promise<string | null>) => {
     setBusy(true);
     setError(null);
-    const problem = await fn();
-    setBusy(false);
-    setError(problem);
+    let problem: string | null = 'Something went wrong. Please try again.';
+    try {
+      problem = await fn();
+    } finally {
+      setBusy(false);
+      setError(problem);
+    }
     return problem;
   };
 

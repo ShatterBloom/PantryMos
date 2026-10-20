@@ -119,30 +119,36 @@ export class Conversation {
   }
 
   /** A card button. Returns an error message to show next to the card, or null. */
-  async act(card: ProposalCard, action: 'confirm' | 'reject' | 'regenerate'): Promise<string | null> {
-    try {
-      if (action === 'confirm') await this.api.confirm(card.proposal_id, card.version);
-      else if (action === 'reject') await this.api.reject(card.proposal_id, card.version);
-      else await this.api.regenerate(card.proposal_id);
-      return null;
-    } catch (err) {
-      return describe(err);
-    } finally {
-      await this.refreshCard(card.proposal_id);
-      await this.poll();
-    }
+  act(card: ProposalCard, action: 'confirm' | 'reject' | 'regenerate'): Promise<string | null> {
+    return this.cardAction(card, () =>
+      action === 'confirm'
+        ? this.api.confirm(card.proposal_id, card.version)
+        : action === 'reject'
+          ? this.api.reject(card.proposal_id, card.version)
+          : this.api.regenerate(card.proposal_id),
+    );
   }
 
-  async edit(card: ProposalCard, changes: unknown): Promise<string | null> {
+  edit(card: ProposalCard, changes: unknown): Promise<string | null> {
+    return this.cardAction(card, () => this.api.edit(card.proposal_id, card.version, changes));
+  }
+
+  /**
+   * Runs a button action and reports its own outcome. Catching up afterwards (the card's state, the
+   * acknowledgement message) is best-effort: the regular poll retries it.
+   */
+  private async cardAction(card: ProposalCard, run: () => Promise<unknown>): Promise<string | null> {
+    let problem: string | null = null;
     try {
-      await this.api.edit(card.proposal_id, card.version, changes);
-      return null;
+      await run();
     } catch (err) {
-      return describe(err);
-    } finally {
-      await this.refreshCard(card.proposal_id);
-      await this.poll();
+      problem = describe(err);
     }
+    // A button answered: the voice question no longer stands (the agent closed its window too).
+    this.set({ window: null });
+    await this.refreshCard(card.proposal_id);
+    await this.poll().catch(() => {});
+    return problem;
   }
 
   /** Shows a line from the app itself (e.g. why the microphone stopped). */

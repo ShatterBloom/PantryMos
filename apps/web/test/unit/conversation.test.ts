@@ -271,6 +271,25 @@ describe('Conversation', () => {
     expect((await conversation.loadProposal('p2').catch((e: unknown) => e)) instanceof ApiError).toBe(true);
   });
 
+  it("reports the action's own outcome though catching up afterwards fails, and closes the window", async () => {
+    const conversation = build();
+    await conversation.poll();
+    const card = proposalCard('p1');
+    api.inbox.push(message(1, { voice_prompt: { kind: 'proposal_confirm', proposal_id: 'p1', version: 1 }, cards: [card] }));
+    await conversation.poll();
+    await settle();
+    expect(conversation.openWindow()).toBe('proposal_confirm');
+
+    api.unknownConversation = false;
+    api.messages = async () => {
+      throw new ApiError(500, {});
+    };
+    expect(await conversation.act(card, 'reject')).toBeNull();
+    api.actionError = new ApiError(409, { message: 'Things changed since this card was made.' });
+    expect(await conversation.act(card, 'confirm')).toBe('Things changed since this card was made.');
+    expect(conversation.openWindow()).toBeNull();
+  });
+
   it('polls once at a time', async () => {
     const conversation = build();
     await Promise.all([conversation.poll(), conversation.poll()]);
