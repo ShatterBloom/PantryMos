@@ -1,6 +1,12 @@
 import type { BusinessError, ErrorCode } from '@pantrymos/shared';
 
-type Details = Omit<BusinessError, 'code' | 'message'>;
+// Spelled out: Omit<BusinessError, ...> would collapse the named keys into the index signature.
+interface Details {
+  ask?: string;
+  options?: unknown[];
+  required?: string[];
+  [detail: string]: unknown;
+}
 
 /**
  * An expected business outcome (IMPLEMENTATION_PLAN §7.1), not a fault. Thrown from domain code;

@@ -140,16 +140,20 @@ export function planIntake(
 
 /**
  * One question at a time (FR-2): report the first problem, and list the `required` paths of every
- * line with the same kind of problem, so the model can fill them all on the next call.
+ * line asking the same question about a different item (e.g. the quantity of each), so the model can
+ * fill them all on the next call. A different question (a missing unit) waits for its own turn.
  */
 function firstProblem(problems: readonly PantryError[]): PantryError {
   const first = problems[0]!;
-  const required = problems
-    .filter((p) => p.code === first.code)
-    .flatMap((p) => p.details.required ?? []);
-  return required.length > 0
-    ? new PantryError(first.code, first.message, { ...first.details, required })
-    : first;
+  const kind = questionKind(first);
+  const required = problems.filter((p) => questionKind(p) === kind).flatMap((p) => p.details.required ?? []);
+  return required.length > 0 ? new PantryError(first.code, first.message, { ...first.details, required }) : first;
+}
+
+/** The code plus the fields asked for, independent of which line: "needs_clarification|quantity". */
+function questionKind(problem: PantryError): string {
+  const fields = (problem.details.required ?? []).map((path) => path.replace(/^items\[\d+\]\./, ''));
+  return `${problem.code}|${fields.join(',')}`;
 }
 
 function planLine(

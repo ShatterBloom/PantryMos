@@ -348,6 +348,28 @@ describe('planIntake: one question at a time (FR-2)', () => {
     });
   });
 
+  it('does not merge different questions that share an error code', () => {
+    expect(
+      failure([
+        { name: 'tomato' },
+        { name: 'spinach', quantity: 2 },
+        { name: 'egg' },
+      ]),
+    ).toEqual({
+      code: 'needs_clarification',
+      message: 'The quantity of tomato is missing.',
+      ask: 'How many tomatoes?',
+      required: ['items[0].quantity', 'items[2].quantity'],
+    });
+  });
+
+  it('asks the next question on the following call', () => {
+    expect(failure([{ name: 'tomato', quantity: 2 }, { name: 'spinach', quantity: 2 }, { name: 'egg', quantity: 6 }])).toMatchObject({
+      ask: 'How much spinach, in grams?',
+      required: ['items[1].unit'],
+    });
+  });
+
   it('reports an unknown item first if it comes first', () => {
     expect(failure([{ name: 'oat milk', quantity: 1, unit: 'l' }, { name: 'tomato' }]).code).toBe('unknown_item');
   });
