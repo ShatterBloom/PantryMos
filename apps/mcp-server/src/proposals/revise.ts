@@ -133,7 +133,18 @@ async function planRevision(
   const lines = diffs
     .map((l) => ({ ...l, item: nameOf(l.item_id), unit: items.get(l.item_id)!.base_unit }))
     .sort((a, b) => a.item.localeCompare(b.item));
+  if (lines.every((l) => l.status === 'unchanged')) throw noChange(session.recipe, lines.filter((l) => targets.has(l.item_id)));
   return { payload: { lines, allocation, card: renderCard(session.recipe, lines, allocation, batches) }, batches };
+}
+
+/** The correction matches what the meal records: nothing to confirm, so say what is recorded. */
+function noChange(recipe: string, listed: readonly ReviseLine[]): PantryError {
+  const recorded = listed.map((l) => speakQuantity(l.item, l.current, l.unit, l.unit));
+  return new PantryError(
+    'no_change',
+    recorded.length > 0 ? `That is already what was recorded for ${recipe}: ${listAnd(recorded)}.` : `That matches what was recorded for ${recipe}.`,
+    { recorded: listed.map((l) => ({ item: l.item, quantity: l.current, unit: l.unit })) },
+  );
 }
 
 /** Every item of the meal, then one line per batch that changes (FR-17). */
@@ -154,15 +165,13 @@ function renderCard(
     const amount = speakQuantity(batch.item, Math.abs(a.delta), batch.unit, batch.unit);
     return `${a.delta < 0 ? 'take' : 'put back'} ${amount} · ${batch.date_label}`;
   });
-  const changed = lines.filter((l) => l.status === 'changed');
-  const spoken = changed.map((l) => `${speakQuantity(l.item, l.target, l.unit, l.unit)} instead of ${formatNumber(l.current)}`);
+  const spoken = lines
+    .filter((l) => l.status === 'changed')
+    .map((l) => `${speakQuantity(l.item, l.target, l.unit, l.unit)} instead of ${formatNumber(l.current)}`);
   return {
     title: `Correct ${recipe}`,
     lines: [...itemLines, ...batchLines],
     warnings: [],
-    readback_text:
-      changed.length > 0
-        ? `For ${recipe}, I'll record ${listAnd(spoken)}. ${CONFIRM_PROMPT}`
-        : `That matches what was recorded for ${recipe}, so nothing changes. ${CONFIRM_PROMPT}`,
+    readback_text: `For ${recipe}, I'll record ${listAnd(spoken)}. ${CONFIRM_PROMPT}`,
   };
 }

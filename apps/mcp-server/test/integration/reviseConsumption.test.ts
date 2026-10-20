@@ -114,11 +114,21 @@ describe('propose_consumption_revision', () => {
       expect(changed).toMatchObject({ proposal_id: first.proposal_id, version: 2 });
     });
 
-    it('says when the correction matches what was recorded', async () => {
+    it('makes no card when the correction matches what was recorded, saying what that is', async () => {
       await stirFry();
-      const p = await ok({ usage: [{ item: 'egg', quantity: 3 }] });
-      expect(p.card.readback_text).toMatch(/^That matches what was recorded for tomato egg stir-fry, so nothing changes\./);
-      expect((await stored(p.proposal_id)).payload.allocation).toEqual([]);
+      expect(parseErrorResult(await revise({ usage: [{ item: 'egg', quantity: 3 }] }))).toEqual({
+        code: 'no_change',
+        message: 'That is already what was recorded for tomato egg stir-fry: 3 eggs.',
+        recorded: [{ item: 'egg', quantity: 3, unit: 'count' }],
+      });
+      expect(parseErrorResult(await revise({ usage: [{ item: 'pasta', quantity: 0 }] }))).toMatchObject({
+        code: 'no_change',
+        message: 'That matches what was recorded for tomato egg stir-fry.',
+      });
+      const proposals = await withAdmin(async (admin) =>
+        (await admin.query(`SELECT 1 FROM pantry.proposals WHERE household_id = $1 AND kind = 'revise_consumption'`, [kitchen.householdId])).rowCount,
+      );
+      expect(proposals).toBe(0);
     });
 
     it('asks which meal when two were recorded in the last 24 hours, and accepts a recipe name or session id (R13)', async () => {

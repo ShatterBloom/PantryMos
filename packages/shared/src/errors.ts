@@ -9,6 +9,7 @@ export const ERROR_CODES = [
   'unit_mismatch',
   'invalid_date',
   'invalid_quantity',
+  'no_change',
   'insufficient_stock',
   'no_active_session',
   'session_in_progress',

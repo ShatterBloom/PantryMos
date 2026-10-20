@@ -63,12 +63,12 @@ export function planAdjustment(request: AdjustRequest, ctx: AdjustContext): Adju
     }
     const batch = ctx.named ?? singleBatch(ctx, false);
     if (!batch) {
-      if (target === 0) throw new PantryError('invalid_quantity', `There is no ${item.name} in stock already.`);
+      if (target === 0) throw new PantryError('no_change', `There is no ${item.name} in stock already.`, { quantity: 0 });
       return checkReason(request.reason, target, { kind: 'new_batch', subject: `adjust:newbatch:${item.id}`, quantity: target });
     }
     const delta = roundQuantity(target - batch.quantity);
     if (delta === 0) {
-      throw new PantryError('invalid_quantity', `That batch already has ${amount(target)}.`, { batch_id: batch.batch_id });
+      throw new PantryError('no_change', `That batch already has ${amount(target)}.`, { batch_id: batch.batch_id, quantity: target });
     }
     return checkReason(request.reason, delta, oneBatch(batch, delta));
   }

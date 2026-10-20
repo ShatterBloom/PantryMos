@@ -111,7 +111,7 @@ describe('planAdjustment (§6.2)', () => {
 
     it('records a count for an item with no stock as a new batch', () => {
       expect(plan({ set_quantity: 2 }, ctx([]))).toEqual({ kind: 'new_batch', subject: 'adjust:newbatch:egg', quantity: 2 });
-      expect(error(() => plan({ set_quantity: 0 }, ctx([]))).code).toBe('invalid_quantity');
+      expect(error(() => plan({ set_quantity: 0 }, ctx([])))).toMatchObject({ code: 'no_change', details: { quantity: 0 } });
     });
 
     it('refuses a positive count that rounds to nothing instead of emptying the batch', () => {
@@ -130,7 +130,11 @@ describe('planAdjustment (§6.2)', () => {
     });
 
     it('says when the count already matches', () => {
-      expect(error(() => plan({ set_quantity: 4 }, ctx([A]))).message).toBe('That batch already has 4 eggs.');
+      expect(error(() => plan({ set_quantity: 4 }, ctx([A])))).toMatchObject({
+        code: 'no_change',
+        message: 'That batch already has 4 eggs.',
+        details: { batch_id: 'A', quantity: 4 },
+      });
     });
   });
 
