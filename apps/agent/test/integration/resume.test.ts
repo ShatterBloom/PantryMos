@@ -80,8 +80,9 @@ describe('resuming a crashed turn', () => {
     expect(await userMessages()).toEqual([{ n: 4 }]); // two user turns + two tool-result messages, none repeated
     expect(await lastMessage(agent)).toMatchObject({ speech: 'Step 2. This step takes 1 minute — start a timer?', step_no: 2 });
 
-    // A third try of the same request replays the stored response.
-    expect((await chat(agent, 'next', { requestId })).body).toEqual({ message_ids: retried.body.message_ids });
+    // A third try of the same request replays the stored response, trace included.
+    expect(retried.body.trace).toEqual([expect.objectContaining({ name: 'next_step', input: { expected_step: 1 }, isError: false })]);
+    expect((await chat(agent, 'next', { requestId })).body).toEqual(retried.body);
     expect(await currentStep()).toBe(2);
   });
 

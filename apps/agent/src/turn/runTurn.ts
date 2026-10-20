@@ -279,6 +279,7 @@ async function finishTurn(
   // The model said nothing and the app had nothing to add: never deliver a silent message.
   if (speech === '') speech = trigger.type === 'user' ? TURN_FAILED : trigger.events.map(fallbackSpeech).join(' ');
 
+  const trace: TraceEntry[] = calls.map((c) => ({ name: c.name, input: c.final_input, isError: c.result!.isError, output: c.result!.data }));
   const messageId = await lease.write(async (tx) => {
     if (voicePrompt) await closeOpenWindows(tx, conversationId);
     const id = await insertOutbound(tx, {
@@ -290,18 +291,15 @@ async function finishTurn(
       step,
     });
     if (trigger.type === 'user') {
-      await completeRequest(tx, conversationId, trigger.chatRequestId, { status: 200, body: { message_ids: [id] } });
+      // The trace is stored with the response, so a replayed request returns the same body.
+      await completeRequest(tx, conversationId, trigger.chatRequestId, { status: 200, body: { message_ids: [id], trace } });
     } else {
       await tx.query(`UPDATE agent.app_events SET turn_done_at = now() WHERE id = ANY ($1::uuid[])`, ['eventIds' in owner ? owner.eventIds : []]);
     }
     return id;
   });
 
-  return {
-    messageId,
-    speech,
-    trace: calls.map((c) => ({ name: c.name, input: c.final_input, isError: c.result!.isError, output: c.result!.data })),
-  };
+  return { messageId, speech, trace };
 }
 
 /** Whether another call of this turn already made a card. */

@@ -11,7 +11,7 @@ import { LeaseBusyError, type LeaseTiming, withLease } from './store/lease.ts';
 import { insertOutbound, listOutbound, outboundById } from './store/outbound.ts';
 import { abandonRequest, claimRequest, completeRequest, finishedResponse, type RequestKey } from './store/requestLog.ts';
 import { closeOpenWindows, openWindow, WINDOW_MS } from './store/windows.ts';
-import { runTurn, type TraceEntry, type TurnDeps } from './turn/runTurn.ts';
+import { runTurn, type TurnDeps } from './turn/runTurn.ts';
 
 export interface RouteDeps {
   pool: Pool;
@@ -79,7 +79,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
                 text: body.text,
                 resume: claim.kind === 'resume' ? { started: claim.started, snapshot: claim.snapshot } : null,
               });
-              return { status: 200, body: { message_ids: [result.messageId] }, trace: result.trace };
+              return { status: 200, body: { message_ids: [result.messageId], trace: result.trace } };
             },
             deps.leaseTiming,
           ),
@@ -228,7 +228,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   async function idempotent(
     reply: FastifyReply,
     key: RequestKey,
-    fn: (claim: Extract<Awaited<ReturnType<typeof claimRequest>>, { kind: 'new' | 'resume' }>) => Promise<InternalResponse & { trace?: TraceEntry[] }>,
+    fn: (claim: Extract<Awaited<ReturnType<typeof claimRequest>>, { kind: 'new' | 'resume' }>) => Promise<InternalResponse>,
   ) {
     const claim = await claimRequest(pool, key);
     switch (claim.kind) {
@@ -244,7 +244,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     }
     try {
       const result = await fn(claim);
-      return reply.code(result.status).send(result.trace ? { ...result.body, trace: result.trace } : result.body);
+      return reply.code(result.status).send(result.body);
     } catch (err) {
       await abandonRequest(pool, key.conversationId, key.requestId).catch(() => {});
       if (err instanceof LeaseBusyError) {
