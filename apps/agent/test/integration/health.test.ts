@@ -1,48 +1,26 @@
 // Spike V3 (MCP half): agent ↔ MCP server ↔ internal API, with role-separated DB access.
-import type { AddressInfo } from 'node:net';
-import type { FastifyInstance } from 'fastify';
-import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '@pantrymos/mcp-server';
-import { buildAgentApp } from '../../src/app.ts';
-import { createPool } from '../../src/db.ts';
-import { createHousehold, mcpTestConfig, TEST_SERVICE_TOKEN } from '../../../../test/fixtures.ts';
+import { createHousehold, mcpTestConfig } from '../../../../test/fixtures.ts';
 import { TEST_AGENT_DB_URL } from '../../../../test/env.ts';
+import { startAgent, type TestAgent } from '../fixtures.ts';
 
 describe('agent health', () => {
   let servers: RunningServers;
-  let agent: FastifyInstance;
-  let pool: pg.Pool;
+  let agent: TestAgent;
 
   beforeAll(async () => {
     const hh = await createHousehold();
     servers = await startServers(mcpTestConfig(), { log: false });
-    const mcpAddr = servers.mcp.server.address() as AddressInfo;
-    const internalAddr = servers.internal.server.address() as AddressInfo;
-    pool = createPool(TEST_AGENT_DB_URL);
-    agent = await buildAgentApp(
-      {
-        databaseUrl: TEST_AGENT_DB_URL,
-        bindHost: '127.0.0.1',
-        port: 0,
-        mcpUrl: `http://127.0.0.1:${mcpAddr.port}/mcp`,
-        internalUrl: `http://127.0.0.1:${internalAddr.port}`,
-        mcpToken: hh.token,
-        serviceToken: TEST_SERVICE_TOKEN,
-        bodyLimitBytes: 64 * 1024,
-      },
-      pool,
-      false,
-    );
+    agent = await startAgent(servers, hh);
   });
   afterAll(async () => {
     await agent.close();
-    await pool.end();
     await servers.close();
   });
 
   it('reports database, MCP and internal API as healthy', async () => {
-    const res = await agent.inject({ method: 'GET', url: '/api/health' });
+    const res = await agent.app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       ok: true,
@@ -54,34 +32,28 @@ describe('agent health', () => {
 });
 
 describe('agent health when dependencies are down', () => {
-  let agent: FastifyInstance;
-  let pool: pg.Pool;
+  let servers: RunningServers;
+  let agent: TestAgent;
 
   beforeAll(async () => {
-    // Port 1 on loopback refuses connections; the pool points at a database that does not exist.
-    pool = createPool(TEST_AGENT_DB_URL.replace(/\/[^/?]+(\?|$)/, '/pantrymos_missing$1'));
-    agent = await buildAgentApp(
-      {
-        databaseUrl: 'unused',
-        bindHost: '127.0.0.1',
-        port: 0,
+    const hh = await createHousehold();
+    servers = await startServers(mcpTestConfig(), { log: false });
+    // Port 1 on loopback refuses connections; the database does not exist.
+    agent = await startAgent(servers, hh, {
+      config: {
+        databaseUrl: TEST_AGENT_DB_URL.replace(/\/[^/?]+(\?|$)/, '/pantrymos_missing$1'),
         mcpUrl: 'http://127.0.0.1:1/mcp',
         internalUrl: 'http://127.0.0.1:1',
-        mcpToken: 'unused-token-0123456789',
-        serviceToken: TEST_SERVICE_TOKEN,
-        bodyLimitBytes: 64 * 1024,
       },
-      pool,
-      false,
-    );
+    });
   });
   afterAll(async () => {
     await agent.close();
-    await pool.end();
+    await servers.close();
   });
 
   it('returns 503 and names every failed dependency', async () => {
-    const res = await agent.inject({ method: 'GET', url: '/api/health' });
+    const res = await agent.app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toEqual({ ok: false, db: false, mcp: { ok: false, tools: [] }, internal: false });
   });

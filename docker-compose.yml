@@ -10,6 +10,7 @@ x-secrets: &secrets
   PANTRY_AGENT_PASSWORD: ${PANTRY_AGENT_PASSWORD:-dev-agent-password}
   SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
   AGENT_MCP_TOKEN: ${AGENT_MCP_TOKEN:-dev-agent-mcp-token-change-me}
+  AGENT_HOUSEHOLD_ID: ${AGENT_HOUSEHOLD_ID:-00000000-0000-4000-8000-000000000001}
 
 services:
   db:

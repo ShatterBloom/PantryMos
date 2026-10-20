@@ -1,7 +1,14 @@
+import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
-import type pg from 'pg';
 import type { AgentConfig } from './config.ts';
+import type { Pool } from './db.ts';
+import { InternalClient } from './internalClient.ts';
 import { connectMcp } from './mcpClient.ts';
+import type { ModelClient } from './model/types.ts';
+import { registerRoutes } from './routes.ts';
+import type { LeaseTiming } from './store/lease.ts';
+import type { TurnDeps } from './turn/runTurn.ts';
+import { type WorkerTiming, Workers } from './workers.ts';
 
 export interface HealthReport {
   ok: boolean;
@@ -10,9 +17,43 @@ export interface HealthReport {
   internal: boolean;
 }
 
-/** Agent HTTP app. M0: health only; chat, cards and voice routes arrive in M4/M5. */
-export async function buildAgentApp(config: AgentConfig, pool: pg.Pool, log = true): Promise<FastifyInstance> {
-  const app = Fastify({ bodyLimit: config.bodyLimitBytes, logger: log ? { level: process.env.LOG_LEVEL ?? 'info' } : false });
+export interface AgentOptions {
+  model: ModelClient;
+  /** How turns reach the MCP server; defaults to the configured URL and token. */
+  connectMcp?: TurnDeps['connectMcp'];
+  log?: boolean;
+  /** Run the timer scheduler and the event worker (off in tests that drive them by hand). */
+  workers?: boolean;
+  workerTiming?: Partial<WorkerTiming>;
+  leaseTiming?: LeaseTiming;
+  windowMs?: number;
+}
+
+export interface AgentApp {
+  app: FastifyInstance;
+  workers: Workers;
+}
+
+/** The agent backend (§8): chat, voice gate, card actions and the proactive engine. */
+export async function buildAgentApp(config: AgentConfig, pool: Pool, options: AgentOptions): Promise<AgentApp> {
+  const app = Fastify({
+    bodyLimit: config.bodyLimitBytes,
+    logger: options.log === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },
+  });
+  const internal = new InternalClient(config.internalUrl, config.serviceToken);
+  const turn: TurnDeps = {
+    pool,
+    model: options.model,
+    connectMcp: options.connectMcp ?? (() => connectMcp(config.mcpUrl, config.mcpToken)),
+  };
+  const workers = new Workers(turn, config.householdId, {
+    ...(options.workerTiming ? { timing: options.workerTiming } : {}),
+    ...(options.leaseTiming ? { leaseTiming: options.leaseTiming } : {}),
+    onError: (err, context) => app.log.error({ err }, `${context} failed`),
+  });
+
+  // §11.5: per-route limits only (/api/chat); everything else is unlimited here.
+  await app.register(rateLimit, { global: false });
 
   app.get('/api/health', async (_request, reply) => {
     const report: HealthReport = { ok: false, db: false, mcp: { ok: false, tools: [] }, internal: false };
@@ -49,5 +90,16 @@ export async function buildAgentApp(config: AgentConfig, pool: pg.Pool, log = tr
     return reply.code(report.ok ? 200 : 503).send(report);
   });
 
-  return app;
+  registerRoutes(app, {
+    pool,
+    config,
+    internal,
+    turn,
+    ...(options.leaseTiming ? { leaseTiming: options.leaseTiming } : {}),
+    ...(options.windowMs ? { windowMs: options.windowMs } : {}),
+  });
+
+  if (options.workers !== false) workers.start();
+  app.addHook('onClose', async () => workers.stop());
+  return { app, workers };
 }
