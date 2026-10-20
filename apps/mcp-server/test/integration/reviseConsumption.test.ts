@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
+  adjustStock,
   callWrite,
   confirmCard,
   connectMcpClient,
@@ -213,7 +214,7 @@ describe('propose_consumption_revision', () => {
     });
 
     it('returns stock to a batch the meal emptied, which becomes active again (R7)', async () => {
-      await withAdmin((admin) => admin.query(`UPDATE pantry.batches SET status = 'depleted' WHERE id = $1`, [eggNew]));
+      expect((await adjustStock(servers, client, { batch_id: eggNew, delta: -12, reason: 'discard' })).status).toBe(200);
       // Only the 6-egg carton is active; two meals of 3 eggs empty it.
       await stockKitchen(kitchen, STIR_FRY_REST);
       await stirFry();

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
+  adjustStock,
   callWrite,
   connectMcpClient,
   createDemoKitchen,
@@ -177,9 +178,7 @@ describe('start_cooking and get_session', () => {
       await stockKitchen(kitchen, { ...PASTA_STOCK, scallion: 4 });
       const started = (await start({ recipe_name: 'creamy spinach pasta' })).structuredContent as unknown as Started;
       // Another conversation used milk meanwhile: coverage now shows the shortfall.
-      await withAdmin((admin) =>
-        admin.query(`UPDATE pantry.batches SET quantity = 100 WHERE item_id = $1`, [kitchen.items.milk]),
-      );
+      expect((await adjustStock(servers, client, { item: 'milk', set_quantity: 100 })).status).toBe(200);
       const res = await client.callTool({ name: 'get_session', arguments: {} });
       const out = res.structuredContent as Record<string, unknown>;
       expect(out).toMatchObject({

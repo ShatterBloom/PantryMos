@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
+  adjustStock,
   callWrite,
   connectMcpClient,
   createDemoKitchen,
@@ -76,7 +77,7 @@ describe('plan edits while cooking', () => {
   /** Starts the demo dish, then the scallions run out mid-cook (onions are in stock). */
   const startWithoutScallions = async () => {
     const sessionId = await startPasta(kitchen, client, { ...PASTA_STOCK, onion: 2 });
-    await withAdmin((admin) => admin.query(`UPDATE pantry.batches SET quantity = 0, status = 'depleted' WHERE item_id = $1`, [kitchen.items.scallion]));
+    expect((await adjustStock(servers, client, { item: 'scallion', delta: -PASTA_STOCK.scallion!, reason: 'discard' })).status).toBe(200);
     return sessionId;
   };
 
@@ -90,13 +91,14 @@ describe('plan edits while cooking', () => {
 
     it('swaps the planned ingredient and leaves inventory alone (D2, FR-13)', async () => {
       const sessionId = await startWithoutScallions();
+      const eventsBefore = await nonPurchaseEvents(); // the scallion discard
       const { out, res } = await call('substitute', { from_item: 'scallion', to_item: 'onion' });
       expect(out.changed).toBe(true);
       expect(out.planned_usage).toContainEqual({ item: 'scallion', quantity: 2, unit: 'count', status: 'skipped', origin: 'recipe', replaces: null });
       expect(out.planned_usage).toContainEqual({ item: 'onion', quantity: 1, unit: 'count', status: 'planned', origin: 'substitute', replaces: 'scallion' });
       expect((res.content as Array<{ text: string }>)[0]?.text).toBe('Using 1 onion instead of scallion; inventory is unchanged.');
       expect(await sessionRow(sessionId)).toMatchObject({ state: 'cooking', state_version: 2 });
-      expect(await nonPurchaseEvents()).toBe(0);
+      expect(await nonPurchaseEvents()).toBe(eventsBefore);
     });
 
     it('is a no-op when the same substitution is applied again', async () => {
@@ -115,7 +117,7 @@ describe('plan edits while cooking', () => {
       });
       expect((await call('substitute', { from_item: 'egg' })).error?.code).toBe('not_in_plan');
       expect((await call('substitute', { from_item: 'unobtainium' })).error?.code).toBe('not_in_plan');
-      await withAdmin((admin) => admin.query(`UPDATE pantry.batches SET quantity = 0, status = 'depleted' WHERE item_id = $1`, [kitchen.items.onion]));
+      expect((await adjustStock(servers, client, { item: 'onion', delta: -2, reason: 'discard' })).status).toBe(200);
       expect((await call('substitute', { from_item: 'scallion', to_item: 'onion' })).error?.code).toBe('insufficient_stock');
       expect((await call('substitute', { from_item: 'scallion' })).error).toMatchObject({
         code: 'no_substitute',
