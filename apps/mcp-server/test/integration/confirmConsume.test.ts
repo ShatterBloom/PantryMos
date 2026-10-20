@@ -20,6 +20,7 @@ import {
   PASTA_STOCK,
   stockKitchen,
   todayIn,
+  waitForLockWaiters,
   withAdmin,
 } from '../../../../test/fixtures.ts';
 
@@ -197,6 +198,31 @@ describe('confirm consumption', () => {
     }
     expect(await quantity(milkA)).toBe(900);
     expect(await ledgerMismatches(kitchen.householdId)).toEqual([]);
+  });
+
+  // Lock order (§4.3): with the session held, queue a re-propose, then a confirm, behind it. If confirm
+  // took the card before the session it would hold what the re-propose needs next: a deadlock.
+  it('takes the session before the card, so a confirm racing a re-propose cannot deadlock', async () => {
+    const p = await propose();
+    const other = new pg.Client({ connectionString: TEST_ADMIN_URL });
+    await other.connect();
+    try {
+      await other.query('BEGIN');
+      await other.query(`SELECT 1 FROM pantry.cooking_sessions WHERE id = $1 FOR UPDATE`, [sessionId]);
+      const reproposing = callWrite(client, 'propose_consumption', { overrides: [{ item: 'milk', quantity: 300 }] });
+      await waitForLockWaiters(1);
+      const confirming = confirm(p, 1);
+      await waitForLockWaiters(2);
+      await other.query('COMMIT');
+
+      const reproposed = await reproposing;
+      expect(parseErrorResult(reproposed)).toBeNull();
+      expect(reproposed.structuredContent).toMatchObject({ proposal_id: p.proposal_id, version: 2 });
+      expect(await confirming).toMatchObject({ status: 409, body: { code: 'stale_proposal', current_version: 2 } });
+    } finally {
+      await other.end();
+    }
+    expect(await consumeEvents()).toEqual([]);
   });
 
   it('records a spoken confirmation, then lets the next recipe start', async () => {

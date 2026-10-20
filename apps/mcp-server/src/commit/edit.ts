@@ -4,7 +4,7 @@ import type { Pool } from '../db/pool.ts';
 import { type Outcome, runIdempotent } from '../db/requestLog.ts';
 import { PantryError } from '../domain/errors.ts';
 import { PLANNERS } from '../proposals/registry.ts';
-import { lockActionableProposal, markExpired, notFound, proposalHead } from './lock.ts';
+import { lockActionableProposal, lockTargetSession, markExpired, notFound, proposalHead } from './lock.ts';
 
 export const EditBody = z.object({
   base_version: z.number().int().min(1),
@@ -62,6 +62,7 @@ export async function regenerateProposal(pool: Pool, proposalId: string, body: R
     pool,
     { householdId: head.household_id, requestId: body.request_id, scope: 'internal:regenerate', payload: { proposal_id: proposalId } },
     async (tx) => {
+      await lockTargetSession(tx, proposalId);
       const { rows } = await tx.query<{ status: string; expired: boolean; input: unknown; conversation_id: string }>(
         `SELECT status, expires_at <= now() AS expired, input, conversation_id FROM pantry.proposals WHERE id = $1 FOR UPDATE`,
         [proposalId],

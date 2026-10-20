@@ -21,7 +21,22 @@ export async function proposalHousehold(pool: Pool, proposalId: string): Promise
 export const notFound = () => ({ status: 404, body: new PantryError('not_found', 'No such proposal.').toBody() });
 
 /**
- * Locks the proposal row (FOR UPDATE) and checks it is still the pending `version` the user saw:
+ * Lock order (§4.3 step 3): cooking session, then proposal, then batches. Cooking tools lock their
+ * session before they write its card, so card actions must take the session first too; otherwise a
+ * confirm racing a re-propose (or substitute) deadlocks. A proposal's target session never changes,
+ * so it is read without a lock. No-op for proposals without a session.
+ */
+export async function lockTargetSession(tx: Tx, proposalId: string): Promise<void> {
+  await tx.query(
+    `SELECT 1 FROM pantry.cooking_sessions
+      WHERE id = (SELECT target_session_id FROM pantry.proposals WHERE id = $1)
+      FOR UPDATE`,
+    [proposalId],
+  );
+}
+
+/**
+ * Locks the proposal row (FOR UPDATE), after its session (see lockTargetSession), and checks it is still the pending `version` the user saw:
  * already_committed (with the original operation), not_pending, or stale_proposal otherwise.
  * Expiry is left to the caller, which decides what to record.
  */
@@ -31,6 +46,7 @@ export async function lockActionableProposal(
   householdId: string,
   version: number,
 ): Promise<LockedProposal> {
+  await lockTargetSession(tx, proposalId);
   const { rows } = await tx.query<LockedProposal>(
     `SELECT id, household_id, conversation_id, kind, version, status, input, payload, preconditions, target_session_id,
             expires_at <= now() AS expired

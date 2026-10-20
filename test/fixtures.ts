@@ -235,6 +235,24 @@ export async function adjustBatch(householdId: string, batchId: string, delta: n
   });
 }
 
+/**
+ * Waits until `count` backends of the test database are blocked on a lock, so a test can line up
+ * concurrent requests in a known order. Integration files run serially, so they are this test's.
+ */
+export async function waitForLockWaiters(count: number, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  await withAdmin(async (admin) => {
+    for (;;) {
+      const { rows } = await admin.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+      );
+      if (rows[0]!.n >= count) return;
+      if (Date.now() > deadline) throw new Error(`Timed out waiting for ${count} lock waiters (have ${rows[0]!.n})`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  });
+}
+
 /** POSTs (or PATCHes) to the internal listener with the service token. */
 export async function internalCall(
   servers: RunningServers,
