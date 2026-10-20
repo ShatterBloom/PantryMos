@@ -80,6 +80,13 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
 
     const execute = async (call: ToolCallRow): Promise<ToolOutput> => {
       if (!allowed(call.name)) return toolError('tool_not_allowed', `${call.name} is not available in this turn.`);
+      if (call.name.startsWith('propose_') && (await cardOfTurn(deps.pool, conversationId, owner, call.tool_use_id))) {
+        // A message reads back one card, and "confirm" answers one (§8.5).
+        return toolError(
+          'one_card_per_turn',
+          'This turn already made a card, and the user can confirm only one at a time. Let the user answer that card; make this one in a later turn.',
+        );
+      }
       if (call.name === 'next_step' && call.final_input.expected_step === undefined) {
         return toolError('no_step_heard', 'No recipe step has been read to the user yet. Call get_session and read the current step first.');
       }
@@ -217,7 +224,7 @@ async function finishTurn(
       : "Sorry, that took too many steps. Let's try something simpler.";
 
   const cards: Card[] = [];
-  const proposals = new Map<string, Record<string, unknown>>();
+  let proposal: Record<string, unknown> | null = null;
   let step: { session_id: string; step_no: number } | null = null;
   let offer: VoicePrompt | null = null;
   for (const call of calls) {
@@ -227,7 +234,7 @@ async function finishTurn(
       continue;
     }
     if (call.name.startsWith('propose_')) {
-      proposals.set(data.proposal_id as string, data);
+      proposal = data;
     } else if (STEP_TOOLS.has(call.name) && typeof data.step_no === 'number') {
       if (call.name === 'get_session' && !['cooking', 'awaiting_confirmation'].includes(data.state as string)) continue;
       step = { session_id: data.session_id as string, step_no: data.step_no };
@@ -247,10 +254,10 @@ async function finishTurn(
   }
 
   let voicePrompt: VoicePrompt | null = null;
-  for (const p of proposals.values()) {
-    cards.push({ type: 'proposal', ...pick(p, ['proposal_id', 'version', 'kind', 'card', 'expires_at']) });
-    speech = `${speech} ${(p.card as { readback_text: string }).readback_text}`.trim();
-    voicePrompt = { kind: 'proposal_confirm', proposal_id: p.proposal_id as string, version: p.version as number };
+  if (proposal) {
+    cards.push({ type: 'proposal', ...pick(proposal, ['proposal_id', 'version', 'kind', 'card', 'expires_at']) });
+    speech = `${speech} ${(proposal.card as { readback_text: string }).readback_text}`.trim();
+    voicePrompt = { kind: 'proposal_confirm', proposal_id: proposal.proposal_id as string, version: proposal.version as number };
   }
   // A card read-back takes precedence over a timer offer in the same message (§8.2).
   if (!voicePrompt && offer?.kind === 'timer_offer' && !(await stepHasTimer(pool, conversationId, offer.session_id, offer.step_no))) {
@@ -281,6 +288,12 @@ async function finishTurn(
     speech,
     trace: calls.map((c) => ({ name: c.name, input: c.final_input, isError: c.result!.isError, output: c.result!.data })),
   };
+}
+
+/** Whether another call of this turn already made a card. */
+async function cardOfTurn(pool: Pool, conversationId: string, owner: TurnOwner, toolUseId: string): Promise<boolean> {
+  const calls = await callsOfTurn(pool, conversationId, owner);
+  return calls.some((c) => c.tool_use_id !== toolUseId && c.name.startsWith('propose_') && c.result !== null && !c.result.isError);
 }
 
 const pick = (data: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.filter((k) => k in data).map((k) => [k, data[k]]));

@@ -12,7 +12,7 @@ import {
   mcpTestConfig,
   stockKitchen,
 } from '../../../../test/fixtures.ts';
-import { agentRows, APP_ORIGIN, callTools, cardAction, chat, lastMessage, say, startAgent, type TestAgent } from '../fixtures.ts';
+import { agentRows, APP_ORIGIN, callTools, cardAction, chat, lastMessage, lastToolResults, say, startAgent, type TestAgent } from '../fixtures.ts';
 
 describe('card actions and the /api surface', () => {
   let servers: RunningServers;
@@ -46,6 +46,26 @@ describe('card actions and the /api surface', () => {
     await chat(agent, 'I dropped two eggs');
     return (await lastMessage(agent)).voice_prompt as { proposal_id: string; version: number };
   };
+
+  it('makes one card per turn, so "confirm" answers the only card read back', async () => {
+    await stockKitchen(kitchen, { egg: 12, tomato: 4 });
+    agent.model.push(
+      callTools(['propose_adjustment', { item: 'egg', delta: -2, reason: 'discard' }], ['propose_adjustment', { item: 'tomato', delta: -1, reason: 'discard' }]),
+      say('OK.'),
+    );
+    await chat(agent, 'I dropped two eggs and a tomato');
+
+    expect(lastToolResults(agent.model.requests.at(-1)!)).toEqual([
+      expect.objectContaining({ proposal_id: expect.any(String) }),
+      expect.objectContaining({ code: 'one_card_per_turn' }),
+    ]);
+    const message = await lastMessage(agent);
+    const [card] = message.cards as Array<{ type: string; proposal_id: string }>;
+    expect(message.cards).toHaveLength(1);
+    expect(message.voice_prompt).toEqual({ kind: 'proposal_confirm', proposal_id: card!.proposal_id, version: 1 });
+    expect(message.speech).toMatch(/^OK\. I'll record that 2 eggs were thrown out\./);
+    expect(message.speech).not.toMatch(/tomato/);
+  });
 
   it('rejects a card by button and records it for the next turn', async () => {
     const card = await discardCard();
