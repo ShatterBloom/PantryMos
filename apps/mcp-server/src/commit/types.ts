@@ -9,6 +9,8 @@ export interface LockedProposal {
   kind: ProposalKind;
   version: number;
   status: string;
+  /** Normalized tool input, re-planned by edit and regenerate. */
+  input: unknown;
   payload: unknown;
   preconditions: unknown;
   target_session_id: string | null;

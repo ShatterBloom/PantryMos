@@ -8,6 +8,7 @@ import type { Tx } from '../db/tx.ts';
 import { PantryError } from '../domain/errors.ts';
 import { consumeExecutor } from './consume.ts';
 import { intakeExecutor } from './intake.ts';
+import { lockActionableProposal, markExpired, notFound, proposalHousehold } from './lock.ts';
 import type { Executor, LockedProposal } from './types.ts';
 
 export const ConfirmBody = z
@@ -35,13 +36,6 @@ const EXECUTORS: Partial<Record<ProposalKind, Executor>> = {
 /** Catalog constraints a concurrent creator could hit despite the advisory locks (§4.3 step 3). */
 const CATALOG_CONSTRAINTS = new Set(['items_name_ci', 'unit_conversions_pkey']);
 
-export async function proposalHousehold(pool: Pool, proposalId: string): Promise<string | null> {
-  const { rows } = await pool.query<{ household_id: string }>(`SELECT household_id FROM pantry.proposals WHERE id = $1`, [
-    proposalId,
-  ]);
-  return rows[0]?.household_id ?? null;
-}
-
 /**
  * Confirms exactly `body.version` of a proposal and executes its pinned plan, in one transaction.
  * Every outcome (committed, stale, expired, conflict) is a durable result of this request_id:
@@ -50,9 +44,7 @@ export async function proposalHousehold(pool: Pool, proposalId: string): Promise
 export async function confirmProposal(pool: Pool, proposalId: string, body: ConfirmBody): Promise<Outcome> {
   // The internal API is trusted (service token); the household comes from the proposal row (§11.3).
   const householdId = await proposalHousehold(pool, proposalId);
-  if (householdId === null) {
-    return { status: 404, body: new PantryError('not_found', 'No such proposal.').toBody() };
-  }
+  if (householdId === null) return notFound();
   return runIdempotent(
     pool,
     {
@@ -66,39 +58,9 @@ export async function confirmProposal(pool: Pool, proposalId: string, body: Conf
 }
 
 async function confirmLocked(tx: Tx, proposalId: string, householdId: string, body: ConfirmBody): Promise<Outcome> {
-  const { rows } = await tx.query<LockedProposal>(
-    `SELECT id, household_id, conversation_id, kind, version, status, payload, preconditions, target_session_id,
-            expires_at <= now() AS expired
-       FROM pantry.proposals WHERE id = $1 AND household_id = $2
-       FOR UPDATE`,
-    [proposalId, householdId],
-  );
-  const proposal = rows[0]!;
-
-  if (proposal.status === 'committed') {
-    const op = await tx.query<{ id: string; proposal_version: number; summary: unknown }>(
-      `SELECT id, proposal_version, summary FROM pantry.operations WHERE proposal_id = $1`,
-      [proposalId],
-    );
-    throw new PantryError('already_committed', 'This card was already confirmed.', {
-      operation_id: op.rows[0]?.id,
-      version: op.rows[0]?.proposal_version,
-      summary: op.rows[0]?.summary,
-    });
-  }
-  if (proposal.status !== 'pending') {
-    throw new PantryError('not_pending', `This card is ${proposal.status} and can no longer be confirmed.`, {
-      status: proposal.status,
-    });
-  }
-  if (proposal.version !== body.version) {
-    throw new PantryError('stale_proposal', 'This card changed. Please review it again.', {
-      current_version: proposal.version,
-    });
-  }
-
+  const proposal = await lockActionableProposal(tx, proposalId, householdId, body.version);
   if (proposal.expired) {
-    await tx.query(`UPDATE pantry.proposals SET status = 'expired', updated_at = now() WHERE id = $1`, [proposalId]);
+    await markExpired(tx, proposalId);
     await insertConfirmation(tx, proposal, body, 'expired');
     return failure('expired', 'This card expired. Please ask again.');
   }
