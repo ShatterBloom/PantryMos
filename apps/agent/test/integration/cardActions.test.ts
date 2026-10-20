@@ -1,4 +1,4 @@
-// Card buttons and the /api surface (§8.8, §11.4): proxied card actions, their app events, and the origin check.
+// Card buttons and the /api surface (§8.8): proxied card actions and their app events.
 import { randomUUID } from 'node:crypto';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -12,7 +12,7 @@ import {
   mcpTestConfig,
   stockKitchen,
 } from '../../../../test/fixtures.ts';
-import { agentRows, APP_ORIGIN, callTools, cardAction, chat, lastMessage, lastToolResults, say, startAgent, type TestAgent } from '../fixtures.ts';
+import { agentRows, callTools, cardAction, chat, lastMessage, lastToolResults, say, startAgent, type TestAgent } from '../fixtures.ts';
 
 describe('card actions and the /api surface', () => {
   let servers: RunningServers;
@@ -122,21 +122,11 @@ describe('card actions and the /api surface', () => {
     expect((await cardAction(agent, 'POST', `/api/proposals/not-a-uuid/reject`, { version: 1 })).status).toBe(400);
   });
 
-  it('refuses state-changing requests without the app origin (S8 origin half)', async () => {
-    const payload = { conversation_id: agent.conversationId, request_id: randomUUID(), text: 'hi', input_mode: 'text' };
-    expect((await agent.app.inject({ method: 'POST', url: '/api/chat', payload })).statusCode).toBe(403);
-    expect(
-      (await agent.app.inject({ method: 'POST', url: '/api/chat', headers: { origin: 'https://evil.example' }, payload })).statusCode,
-    ).toBe(403);
-    agent.model.push(say('Hi.'));
-    expect((await agent.app.inject({ method: 'POST', url: '/api/chat', headers: { origin: APP_ORIGIN }, payload })).statusCode).toBe(200);
-  });
-
   it('validates input and keeps conversations to their household and user', async () => {
     expect((await chat(agent, '')).status).toBe(400);
-    const res = await agent.app.inject({ method: 'GET', url: `/api/messages?conversation_id=${randomUUID()}` });
+    const res = await agent.api({ method: 'GET', url: `/api/messages?conversation_id=${randomUUID()}` });
     expect(res.statusCode).toBe(404);
-    expect((await agent.app.inject({ method: 'GET', url: '/api/messages?conversation_id=nope' })).statusCode).toBe(400);
+    expect((await agent.api({ method: 'GET', url: '/api/messages?conversation_id=nope' })).statusCode).toBe(400);
 
     // A conversation id another household already uses cannot be taken over.
     const other = await startAgent(servers, await createDemoKitchen());
@@ -144,7 +134,7 @@ describe('card actions and the /api surface', () => {
       other.model.push(say('Hi.'));
       expect((await chat(other, 'hi', { conversationId: agent.conversationId })).status).toBe(200);
       expect((await chat(agent, 'hi')).status).toBe(404);
-      const theirs = await agent.app.inject({ method: 'GET', url: `/api/messages?conversation_id=${agent.conversationId}` });
+      const theirs = await agent.api({ method: 'GET', url: `/api/messages?conversation_id=${agent.conversationId}` });
       expect(theirs.statusCode).toBe(404);
     } finally {
       await other.close();

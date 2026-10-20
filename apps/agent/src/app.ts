@@ -1,5 +1,6 @@
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { registerAuth } from './auth.ts';
 import type { AgentConfig } from './config.ts';
 import type { Pool } from './db.ts';
 import { InternalClient } from './internalClient.ts';
@@ -62,6 +63,8 @@ export async function buildAgentApp(config: AgentConfig, pool: Pool, options: Ag
     request.log.error({ err }, 'request failed');
     return reply.code(500).send({ error: 'internal_error', message: 'Something went wrong. Please try again.' });
   });
+
+  registerAuth(app, config);
 
   app.get('/api/health', async (_request, reply) => {
     const report: HealthReport = { ok: false, db: false, mcp: { ok: false, tools: [] }, internal: false };

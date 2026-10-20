@@ -40,13 +40,6 @@ const badRequest = (reply: FastifyReply, issues: unknown) => reply.code(400).sen
 export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { pool, config, internal } = deps;
 
-  /** §11.4: state-changing routes only from the app's own origin. */
-  app.addHook('onRequest', async (request, reply) => {
-    if (request.method === 'GET' || request.method === 'HEAD' || !request.url.startsWith('/api/')) return;
-    const origin = request.headers.origin;
-    if (!origin || !config.appOrigins.includes(origin)) return reply.code(403).send({ error: 'forbidden_origin' });
-  });
-
   app.post(
     '/api/chat',
     { config: { rateLimit: { max: config.chatRatePerMinute, timeWindow: '1 minute', keyGenerator: () => `chat:${config.userId}` } } },

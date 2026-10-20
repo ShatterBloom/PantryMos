@@ -24,6 +24,21 @@ const ConfigSchema = z.object({
   /** Origins allowed to make state-changing /api requests (§11.4). */
   appOrigins: z.preprocess(csv, z.array(z.url()).min(1)).default(['http://localhost:7400', 'http://127.0.0.1:7400']),
   chatRatePerMinute: z.coerce.number().int().positive().default(30),
+  session: z.object({
+    /** Signs the session cookie (§11.4). */
+    secret: z.string().min(32, 'AGENT_SESSION_SECRET must be at least 32 characters'),
+    /**
+     * Unset: anyone who reaches the app is signed in as the demo user, which is safe only while the
+     * agent is published to the host's loopback alone (compose). Set it when deployed.
+     */
+    passcode: z.string().min(6, 'AGENT_PASSCODE must be at least 6 characters').optional(),
+    /** Secure cookies need HTTPS; on when deployed behind TLS. */
+    secureCookie: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    ttlSeconds: z.coerce.number().int().positive().default(12 * 3600),
+  }),
   bedrock: z.object({
     region: z.string().min(1).default('ap-southeast-2'),
     /** An Amazon Nova model or inference profile (Converse API). */
@@ -48,6 +63,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     userId: env.AGENT_USER_ID,
     appOrigins: env.AGENT_APP_ORIGINS,
     chatRatePerMinute: env.AGENT_CHAT_RATE_PER_MINUTE,
+    session: {
+      secret: env.AGENT_SESSION_SECRET,
+      passcode: env.AGENT_PASSCODE || undefined,
+      secureCookie: env.AGENT_SECURE_COOKIE,
+      ttlSeconds: env.AGENT_SESSION_TTL_SECONDS,
+    },
     bedrock: {
       region: env.BEDROCK_REGION ?? env.AWS_REGION,
       modelId: env.BEDROCK_MODEL_ID,

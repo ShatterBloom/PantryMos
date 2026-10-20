@@ -1,7 +1,7 @@
 // Agent test harness: real mcp-server and Postgres, a scripted model in place of Bedrock (§9.5).
 import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import type pg from 'pg';
 import type { RunningServers } from '@pantrymos/mcp-server';
 import { type AgentOptions, buildAgentApp } from '../src/app.ts';
@@ -13,6 +13,7 @@ import { type DemoKitchen, TEST_SERVICE_TOKEN } from '../../../test/fixtures.ts'
 import { TEST_AGENT_DB_URL } from '../../../test/env.ts';
 
 export const APP_ORIGIN = 'http://localhost:7400';
+export const TEST_SESSION_SECRET = 'test-session-secret-0123456789abcdef';
 
 /** One scripted model reply: fixed, or computed from the request (to read tool results). */
 export type Step = ModelResponse | ((request: ModelRequest) => ModelResponse | Promise<ModelResponse>);
@@ -80,6 +81,7 @@ export function agentTestConfig(
     userId: 'demo',
     appOrigins: [APP_ORIGIN],
     chatRatePerMinute: 1000,
+    session: { secret: TEST_SESSION_SECRET, secureCookie: false, ttlSeconds: 3600 },
     bedrock: { region: 'ap-southeast-2', modelId: 'test', maxTokens: 512 },
     ...overrides,
   };
@@ -91,7 +93,23 @@ export interface TestAgent {
   pool: pg.Pool;
   model: ScriptedModel;
   conversationId: string;
+  /** The signed-in session's Cookie header. */
+  cookie: string;
+  /** A request as the signed-in web app makes it: from the app origin, with the session cookie. */
+  api(options: InjectOptions): Promise<LightMyRequestResponse>;
   close(): Promise<void>;
+}
+
+/** Signs in (§11.4) and returns the Cookie header to send. */
+export async function signIn(app: FastifyInstance, passcode?: string): Promise<string> {
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/session',
+    headers: { origin: APP_ORIGIN },
+    payload: passcode === undefined ? {} : { passcode },
+  });
+  if (res.statusCode !== 200) throw new Error(`sign-in failed: ${res.statusCode} ${res.body}`);
+  return String(res.headers['set-cookie']).split(';')[0]!;
 }
 
 export async function startAgent(
@@ -108,12 +126,15 @@ export async function startAgent(
     workers: false,
     ...rest,
   });
+  const cookie = await signIn(app, config?.session?.passcode);
   return {
     app,
     workers,
     pool,
     model,
     conversationId: randomUUID(),
+    cookie,
+    api: (opts) => app.inject({ ...opts, headers: { origin: APP_ORIGIN, cookie, ...opts.headers } }),
     async close() {
       await app.close();
       await pool.end();
@@ -133,10 +154,9 @@ export async function chat(
   text: string,
   options: { inputMode?: 'voice' | 'text'; requestId?: string; conversationId?: string } = {},
 ): Promise<ChatReply> {
-  const res = await agent.app.inject({
+  const res = await agent.api({
     method: 'POST',
     url: '/api/chat',
-    headers: { origin: APP_ORIGIN },
     payload: {
       conversation_id: options.conversationId ?? agent.conversationId,
       request_id: options.requestId ?? randomUUID(),
@@ -161,7 +181,7 @@ export interface Outbound {
 }
 
 export async function messages(agent: TestAgent, after = 0): Promise<Outbound[]> {
-  const res = await agent.app.inject({ method: 'GET', url: `/api/messages?conversation_id=${agent.conversationId}&after=${after}` });
+  const res = await agent.api({ method: 'GET', url: `/api/messages?conversation_id=${agent.conversationId}&after=${after}` });
   return (res.json() as { messages: Outbound[] }).messages;
 }
 
@@ -171,10 +191,9 @@ export async function lastMessage(agent: TestAgent): Promise<Outbound> {
 
 /** The web app's ack once it finished speaking a message (§8.5). */
 export async function ack(agent: TestAgent, messageId: number, conversationId = agent.conversationId) {
-  const res = await agent.app.inject({
+  const res = await agent.api({
     method: 'POST',
     url: '/api/voice-windows/ack',
-    headers: { origin: APP_ORIGIN },
     payload: { conversation_id: conversationId, message_id: messageId, request_id: randomUUID() },
   });
   return { status: res.statusCode, body: res.json() as Record<string, unknown> };
@@ -187,7 +206,7 @@ export async function cardAction(
   path: string,
   payload: Record<string, unknown>,
 ) {
-  const res = await agent.app.inject({ method, url: path, headers: { origin: APP_ORIGIN }, payload: { request_id: randomUUID(), ...payload } });
+  const res = await agent.api({ method, url: path, payload: { request_id: randomUUID(), ...payload } });
   return { status: res.statusCode, body: res.json() as Record<string, unknown> };
 }
 
