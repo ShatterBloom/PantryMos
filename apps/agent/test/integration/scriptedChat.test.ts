@@ -11,6 +11,8 @@ import {
   stockKitchen,
   withAdmin,
 } from '../../../../test/fixtures.ts';
+import { EMPTY_REPLY_NUDGE, EMPTY_REPLY_RETRIES } from '../../src/turn/runTurn.ts';
+import { TURN_FAILED } from '../../src/turn/speech.ts';
 import { ack, agentRows, callTools, chat, lastMessage, lastToolResults, say, startAgent, type TestAgent, voice } from '../fixtures.ts';
 
 describe('a scripted chat: intake → cook → consume', () => {
@@ -52,6 +54,24 @@ describe('a scripted chat: intake → cook → consume', () => {
     expect((await ack(agent, message.id)).status).toBe(200);
     return voice(agent, phrase);
   };
+
+  it('asks again after a reply with nothing in it, and never delivers silence', async () => {
+    const silent = { stopReason: 'end_turn', content: [] };
+    agent.model.push(silent, say('Hi, what are we cooking?'));
+    await chat(agent, 'hello');
+    expect((await lastMessage(agent)).speech).toBe('Hi, what are we cooking?');
+    // The retry carries the nudge; the history the next turn sees does not.
+    const [first, retry] = agent.model.requests.slice(-2);
+    expect(first!.messages.at(-1)!.content).toEqual([{ text: 'hello' }]);
+    expect(retry!.messages.at(-1)!.content).toEqual([{ text: 'hello' }, { text: EMPTY_REPLY_NUDGE }]);
+
+    agent.model.push(...Array.from({ length: EMPTY_REPLY_RETRIES + 1 }, () => silent));
+    await chat(agent, 'are you there?');
+    expect((await lastMessage(agent)).speech).toBe(TURN_FAILED);
+    agent.model.push(say('Yes.'));
+    await chat(agent, 'hello?');
+    expect(JSON.stringify(agent.model.requests.at(-1)!.messages)).not.toContain(EMPTY_REPLY_NUDGE);
+  });
 
   it('does not advance a step the user never heard', async () => {
     await stockKitchen(kitchen, { egg: 6, tomato: 4, 'olive oil': 100, scallion: 2 });

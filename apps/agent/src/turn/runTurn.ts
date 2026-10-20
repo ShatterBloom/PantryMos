@@ -14,7 +14,7 @@ import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
-import { eventBlock, timerOffer } from './speech.ts';
+import { eventBlock, fallbackSpeech, TURN_FAILED, timerOffer } from './speech.ts';
 
 /** §8.1: the single source of truth for iteration caps (also §11.5). */
 export const MAX_ITERATIONS = { user: 8, proactive: 3 } as const;
@@ -32,6 +32,14 @@ const PROACTIVE_TOOLS: ReadonlySet<string> = new Set([
   'propose_consumption',
   'list_timers',
 ]);
+
+/**
+ * Retries of a reply with nothing in it: no text and no tool use, e.g. when Nova answered with only
+ * `<thinking>`, which the adapter strips. Each retry nudges the model; after them the turn says a
+ * templated fallback instead of nothing.
+ */
+export const EMPTY_REPLY_RETRIES = 2;
+export const EMPTY_REPLY_NUDGE = '[app] Your last reply had nothing for the user. Reply to the user now.';
 
 /** Tools whose success output delivers a recipe step to the user. */
 const STEP_TOOLS: ReadonlySet<string> = new Set(['start_cooking', 'next_step', 'get_session']);
@@ -140,7 +148,11 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
     }
 
     for (let i = 0; i < MAX_ITERATIONS[trigger.type] && messages.at(-1)?.role !== 'assistant'; i++) {
-      const reply = await deps.model.converse({ system: SYSTEM_PROMPT, messages: toModelMessages(messages), tools });
+      const request = { system: SYSTEM_PROMPT, messages: toModelMessages(messages), tools };
+      let reply = await deps.model.converse(request);
+      for (let retry = 0; retry < EMPTY_REPLY_RETRIES && reply.content.length === 0; retry++) {
+        reply = await deps.model.converse({ ...request, messages: withNudge(request.messages) });
+      }
       const content = reply.content.length > 0 ? reply.content : [{ text: '' }];
       await lease.write((tx) => appendMessage(tx, conversationId, 'assistant', content));
       const uses = content.filter(isToolUse).map((b) => b.toolUse);
@@ -264,6 +276,8 @@ async function finishTurn(
     speech = `${speech} ${timerOffer(offer.seconds)}`.trim();
     voicePrompt = offer;
   }
+  // The model said nothing and the app had nothing to add: never deliver a silent message.
+  if (speech === '') speech = trigger.type === 'user' ? TURN_FAILED : trigger.events.map(fallbackSpeech).join(' ');
 
   const messageId = await lease.write(async (tx) => {
     if (voicePrompt) await closeOpenWindows(tx, conversationId);
@@ -299,6 +313,12 @@ async function cardOfTurn(pool: Pool, conversationId: string, owner: TurnOwner, 
 const pick = (data: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.filter((k) => k in data).map((k) => [k, data[k]]));
 
 const toolError = (code: string, message: string): ToolOutput => ({ isError: true, data: { code, message }, text: message });
+
+/** The request's messages with the empty-reply nudge added to the last (user) message; not persisted. */
+function withNudge(messages: readonly Message[]): Message[] {
+  const last = messages.at(-1)!;
+  return [...messages.slice(0, -1), { role: last.role, content: [...last.content, { text: EMPTY_REPLY_NUDGE }] }];
+}
 
 /**
  * The persisted messages as Converse accepts them: consecutive messages of one role merged (a turn

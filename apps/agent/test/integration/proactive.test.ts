@@ -133,6 +133,14 @@ describe('proactive turns', () => {
     ]);
   });
 
+  it('says the templated line when the model has nothing to say about an event', async () => {
+    await startTimer('rice');
+    await makeDue('rice');
+    agent.model.push(...Array.from({ length: 3 }, () => ({ stopReason: 'end_turn', content: [] })));
+    await tick();
+    expect((await proactive()).map((m) => m.speech)).toEqual(["Timer 'rice' is done."]);
+  });
+
   /** Claims the conversation's events as a worker would, then "dies" before running a turn. */
   const claimAndDie = async () => {
     await claimEvents(agent.pool, kitchen.householdId, timing, []);
