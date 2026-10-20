@@ -8,6 +8,7 @@ import type { Tx } from '../db/tx.ts';
 import { PantryError } from '../domain/errors.ts';
 import { consumeExecutor } from './consume.ts';
 import { intakeExecutor } from './intake.ts';
+import { reviseExecutor } from './revise.ts';
 import { lockActionableProposal, markExpired, notFound, proposalHousehold } from './lock.ts';
 import type { Executor, LockedProposal } from './types.ts';
 
@@ -27,10 +28,11 @@ export const ConfirmBody = z
 
 export type ConfirmBody = z.infer<typeof ConfirmBody>;
 
-/** Kinds without an executor yet are added in M3 (revise_consumption, adjust, undo). */
+/** Kinds without an executor yet: adjust and undo (M3). */
 const EXECUTORS: Partial<Record<ProposalKind, Executor>> = {
   intake: intakeExecutor,
   consume: consumeExecutor,
+  revise_consumption: reviseExecutor,
 };
 
 /** Catalog constraints a concurrent creator could hit despite the advisory locks (§4.3 step 3). */

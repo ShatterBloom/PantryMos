@@ -97,7 +97,7 @@ export async function proposeConsumption(
  * Rounds an override to the stored precision up front, so the card says exactly what confirm will
  * deduct. A positive amount too small to record is an error, not a silent "remove this line".
  */
-function normalizeOverride(o: { item: string; quantity: number }): { item: string; quantity: number } {
+export function normalizeOverride(o: { item: string; quantity: number }): { item: string; quantity: number } {
   const quantity = roundQuantity(o.quantity);
   if (o.quantity > 0 && quantity === 0) {
     throw new PantryError('invalid_quantity', `${o.quantity} of ${o.item} is too small to record.`, { item: o.item });

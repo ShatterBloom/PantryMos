@@ -347,6 +347,37 @@ export async function startPasta(
   return out.session_id;
 }
 
+/** Confirms a proposal version through the internal route, as the app does on a click. */
+export function confirmCard(servers: RunningServers, proposal: { proposal_id: string }, version: number) {
+  return internalCall(servers, `/internal/proposals/${proposal.proposal_id}/confirm`, {
+    version,
+    user_id: 'demo',
+    channel: 'ui_click',
+    request_id: randomUUID(),
+  });
+}
+
+/**
+ * Cooks a recipe end to end through the tools (start, propose what was used, confirm) from stock
+ * already in the kitchen. Returns the consumed session and its operation.
+ */
+export async function eatMeal(
+  servers: RunningServers,
+  client: Client,
+  recipe: string,
+  overrides: Array<{ item: string; quantity: number }> = [],
+): Promise<{ sessionId: string; operationId: string }> {
+  const started = await callWrite(client, 'start_cooking', { recipe_name: recipe });
+  const sessionId = (started.structuredContent as { session_id?: string } | undefined)?.session_id;
+  if (!sessionId) throw new Error(`start_cooking failed: ${JSON.stringify(started.content)}`);
+  const card = await callWrite(client, 'propose_consumption', { overrides });
+  const proposal = card.structuredContent as { proposal_id: string; version: number } | undefined;
+  if (!proposal) throw new Error(`propose_consumption failed: ${JSON.stringify(card.content)}`);
+  const confirmed = await confirmCard(servers, proposal, proposal.version);
+  if (confirmed.status !== 200) throw new Error(`confirm failed: ${JSON.stringify(confirmed.body)}`);
+  return { sessionId, operationId: confirmed.body.operation_id as string };
+}
+
 export function mcpTestConfig(overrides: Partial<Config> = {}): Config {
   return {
     databaseUrl: TEST_MCP_DB_URL,

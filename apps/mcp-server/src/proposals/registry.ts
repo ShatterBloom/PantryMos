@@ -6,6 +6,7 @@ import type { Tx } from '../db/tx.ts';
 import type { Card } from '../domain/card.ts';
 import { type ConsumeInput, ConsumeOverrides, mergeOverrides, proposeConsumption } from './consume.ts';
 import { type IntakeInput, IntakeItems, proposeIntake } from './intake.ts';
+import { proposeRevision, type ReviseInput, RevisionUsage } from './revise.ts';
 
 export interface Planner {
   /** Schema of the `changes` a card edit may send for this kind. */
@@ -14,7 +15,7 @@ export interface Planner {
   propose(tx: Tx, householdId: string, conversationId: string, input: unknown): Promise<ProposalRef & { card: Card }>;
 }
 
-/** Kinds added in M3 (revise_consumption, adjust, undo) register here too. */
+/** Kinds still to come in M3 (adjust, undo) register here too. */
 export const PLANNERS: Partial<Record<ProposalKind, Planner>> = {
   intake: {
     // The app sends the full edited item list.
@@ -34,5 +35,14 @@ export const PLANNERS: Partial<Record<ProposalKind, Planner>> = {
     },
     propose: (tx, householdId, conversationId, input) =>
       proposeConsumption(tx, householdId, conversationId, input as ConsumeInput),
+  },
+  revise_consumption: {
+    // Like consume: the changed items only; a later amount for an item replaces the earlier one.
+    Changes: z.object({ usage: RevisionUsage }),
+    merge: (input, changes) => {
+      const stored = input as ReviseInput;
+      return { session_id: stored.session_id, usage: mergeOverrides(stored.usage, (changes as ReviseInput).usage) };
+    },
+    propose: (tx, householdId, conversationId, input) => proposeRevision(tx, householdId, conversationId, input as ReviseInput),
   },
 };

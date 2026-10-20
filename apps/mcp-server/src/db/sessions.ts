@@ -1,5 +1,6 @@
 // Cooking sessions (IMPLEMENTATION_PLAN §2.1, §3.1, §7.2).
 import { canonicalJson } from '@pantrymos/shared';
+import type { SourceBatch } from '../domain/allocation.ts';
 import type { PlannedLine } from '../domain/cooking.ts';
 import { PantryError } from '../domain/errors.ts';
 import type { BaseUnit } from '../domain/items.ts';
@@ -51,6 +52,42 @@ export async function lockActiveSession(tx: Tx, householdId: string, sessionId?:
   return session;
 }
 
+/**
+ * Locks the finished meal a revision or undo acts on. The session must be consumed; a cancelled or
+ * reverted one is `invalid_state`.
+ */
+export async function lockConsumedSession(tx: Tx, householdId: string, sessionId: string): Promise<SessionRow> {
+  const { rows } = await tx.query<SessionRow>(`${SELECT_SESSION} WHERE s.household_id = $1 AND s.id = $2 FOR UPDATE OF s`, [
+    householdId,
+    sessionId,
+  ]);
+  const session = rows[0];
+  if (!session) throw new PantryError('no_completed_session', 'There is no such meal.');
+  if (session.state !== 'consumed') {
+    throw new PantryError('invalid_state', `That meal is ${session.state}, so it can't be corrected.`, { state: session.state });
+  }
+  return session;
+}
+
+/** How long after a meal a revision may find it without a session_id (§6.5). */
+export const REVISION_WINDOW_HOURS = 24;
+
+/** Meals consumed within the revision window, newest first. */
+export async function recentMeals(
+  q: Queryable,
+  householdId: string,
+): Promise<Array<{ id: string; recipe_id: string; recipe: string; consumed_at: Date }>> {
+  const { rows } = await q.query<{ id: string; recipe_id: string; recipe: string; consumed_at: Date }>(
+    `SELECT s.id, s.recipe_id, r.name AS recipe, s.consumed_at
+       FROM pantry.cooking_sessions s JOIN pantry.recipes r ON r.id = s.recipe_id
+      WHERE s.household_id = $1 AND s.state = 'consumed'
+        AND s.consumed_at > now() - make_interval(hours => $2)
+      ORDER BY s.consumed_at DESC, s.id`,
+    [householdId, REVISION_WINDOW_HOURS],
+  );
+  return rows;
+}
+
 /** get_session's target: the given session, else the active one, else the most recent one. */
 export async function findSession(q: Queryable, householdId: string, sessionId?: string): Promise<SessionRow | null> {
   const { rows } = await q.query<SessionRow>(
@@ -93,6 +130,22 @@ export async function effectiveUsage(q: Queryable, sessionId: string): Promise<M
     [sessionId],
   );
   return new Map(rows.map((r) => [r.item_id, Number(r.used)]));
+}
+
+/**
+ * The batches a session still holds stock from, per item, in return order (§6.2): most recent net
+ * consumption first. Net of returns and undo, like effectiveUsage.
+ */
+export async function sourceBatches(q: Queryable, sessionId: string, itemIds: readonly string[]): Promise<SourceBatch[]> {
+  const { rows } = await q.query<{ batch_id: string; item_id: string; taken: string }>(
+    `SELECT batch_id, item_id, (-sum(delta))::text AS taken FROM pantry.inventory_events
+      WHERE session_id = $1 AND item_id = ANY ($2::uuid[]) AND reason IN ('consume', 'consume_revision', 'undo')
+      GROUP BY batch_id, item_id
+     HAVING -sum(delta) > 0
+      ORDER BY max(created_at) FILTER (WHERE delta < 0) DESC, batch_id`,
+    [sessionId, itemIds],
+  );
+  return rows.map((r) => ({ batch_id: r.batch_id, item_id: r.item_id, taken: Number(r.taken) }));
 }
 
 /** consume proposals are keyed per session (§4.1). */

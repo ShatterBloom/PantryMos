@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { allocateFefo, type BatchStock } from '../../src/domain/allocation.ts';
+import { allocateFefo, allocateReturn, type BatchStock } from '../../src/domain/allocation.ts';
 import type { PantryError } from '../../src/domain/errors.ts';
 
 const batch = (batch_id: string, item_id: string, quantity: number): BatchStock => ({ batch_id, item_id, quantity, version: 1 });
@@ -77,6 +77,43 @@ describe('allocateFefo (§6.2)', () => {
           const used = lines.find((l) => l.batch_id === `b${i}`);
           expect(used ? -used.delta : 0).toBe(batches[i]!.quantity);
         }
+      }),
+    );
+  });
+});
+
+describe('allocateReturn (§6.2)', () => {
+  // In return order: the meal took from B most recently.
+  const sources = [
+    { batch_id: 'B', item_id: 'egg', taken: 3 },
+    { batch_id: 'A', item_id: 'egg', taken: 2 },
+    { batch_id: 'M', item_id: 'milk', taken: 250 },
+  ];
+
+  it('gives back to the most recent source first, each up to what it gave', () => {
+    expect(allocateReturn(new Map([['egg', 4]]), sources)).toEqual([
+      { batch_id: 'B', item_id: 'egg', delta: 3 },
+      { batch_id: 'A', item_id: 'egg', delta: 1 },
+    ]);
+    expect(allocateReturn(new Map([['egg', 0.5], ['milk', 100]]), sources)).toEqual([
+      { batch_id: 'B', item_id: 'egg', delta: 0.5 },
+      { batch_id: 'M', item_id: 'milk', delta: 100 },
+    ]);
+  });
+
+  it('throws when asked to return more than the session holds (a caller bug)', () => {
+    expect(() => allocateReturn(new Map([['egg', 6]]), sources)).toThrow(/holds less egg/);
+  });
+
+  it('property: returns sum to the amount and never exceed a source', () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 0, max: 50 }), { minLength: 1, maxLength: 5 }), fc.nat(), (takens, seed) => {
+        const src = takens.map((taken, i) => ({ batch_id: `b${i}`, item_id: 'x', taken }));
+        const total = takens.reduce((a, b) => a + b, 0);
+        const give = total === 0 ? 0 : seed % (total + 1);
+        const lines = allocateReturn(new Map([['x', give]]), src);
+        expect(lines.reduce((a, l) => a + l.delta, 0)).toBe(give);
+        for (const l of lines) expect(l.delta).toBeLessThanOrEqual(src.find((s) => s.batch_id === l.batch_id)!.taken);
       }),
     );
   });
