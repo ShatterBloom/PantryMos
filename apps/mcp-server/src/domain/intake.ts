@@ -15,7 +15,7 @@ import {
 import { priorityOf } from './priority.ts';
 import { formatNumber, listAnd, listOr, speakQuantity } from './speech.ts';
 import { normalizeName, plural } from './text.ts';
-import { canonicalUnit, CONVERSION_UNIT, isBuiltinUnit, resolveUnit } from './units.ts';
+import { canonicalUnit, CONVERSION_UNIT, isBuiltinUnit, resolveUnit, roundQuantity } from './units.ts';
 
 /** Largest quantity accepted, in base units (§11.5). */
 export const MAX_QUANTITY = 100_000;
@@ -206,7 +206,7 @@ function planLine(
     if (!newConversions.has(conversionKey(conversion))) newConversions.set(conversionKey(conversion), conversion);
   }
 
-  const quantityBase = Math.round(input.quantity * unit.factor * 1000) / 1000;
+  const quantityBase = roundQuantity(input.quantity * unit.factor);
   if (quantityBase <= 0 || quantityBase > MAX_QUANTITY) {
     throw new PantryError(
       'invalid_quantity',

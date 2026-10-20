@@ -22,6 +22,9 @@ const ALIASES = new Map<string, string>([
   ['liter', 'l'], ['litre', 'l'], ['ltr', 'l'],
 ]);
 
+/** Quantities are kept to three decimals of their base unit (0.001 g, ml or count). */
+export const roundQuantity = (n: number) => Math.round(n * 1000) / 1000;
+
 /** Saved conversions use this shape (mirrors the `unit_conversions.unit` CHECK). */
 export const CONVERSION_UNIT = /^[a-z][a-z ]{0,19}$/;
 

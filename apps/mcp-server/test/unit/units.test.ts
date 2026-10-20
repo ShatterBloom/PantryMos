@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalUnit, CONVERSION_UNIT, isBuiltinUnit, resolveUnit } from '../../src/domain/units.ts';
+import { canonicalUnit, CONVERSION_UNIT, isBuiltinUnit, resolveUnit, roundQuantity } from '../../src/domain/units.ts';
 
 const none = new Map<string, number>();
 
@@ -68,5 +68,14 @@ describe('CONVERSION_UNIT', () => {
     expect(CONVERSION_UNIT.test('Carton')).toBe(false);
     expect(CONVERSION_UNIT.test('1carton')).toBe(false);
     expect(CONVERSION_UNIT.test('a'.repeat(21))).toBe(false);
+  });
+});
+
+describe('roundQuantity', () => {
+  it('keeps three decimals of the base unit', () => {
+    expect(roundQuantity(0.3333)).toBe(0.333);
+    expect(roundQuantity(0.0005)).toBe(0.001);
+    expect(roundQuantity(0.0004)).toBe(0);
+    expect(roundQuantity(1.1 * 3)).toBe(3.3);
   });
 });

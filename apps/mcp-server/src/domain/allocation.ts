@@ -1,6 +1,7 @@
 // Batch allocation (IMPLEMENTATION_PLAN §6.2): which batches a deduction takes from.
 import { PantryError } from './errors.ts';
 import { formatNumber } from './speech.ts';
+import { roundQuantity as round } from './units.ts';
 
 export interface BatchStock {
   batch_id: string;
@@ -15,8 +16,6 @@ export interface AllocationLine {
   item_id: string;
   delta: number;
 }
-
-const round = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
  * Deducts each item's quantity from its batches first-expired-first-out. `batches` must already be

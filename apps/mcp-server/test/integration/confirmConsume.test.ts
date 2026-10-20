@@ -152,6 +152,23 @@ describe('confirm consumption', () => {
     expect(await consumeEvents()).toEqual([]);
   });
 
+  it('rounds an override to the stored precision before the card is made, and refuses one that rounds to zero', async () => {
+    const p = await propose([{ item: 'milk', quantity: 0.3333 }]);
+    const payload = await withAdmin(async (admin) =>
+      (await admin.query(`SELECT input, payload FROM pantry.proposals WHERE id = $1`, [p.proposal_id])).rows[0],
+    );
+    expect(payload.input.overrides).toEqual([{ item: 'milk', quantity: 0.333 }]);
+    expect(payload.payload.lines).toContainEqual(expect.objectContaining({ item: 'milk', quantity: 0.333 }));
+    expect((await confirm(p, 1)).status).toBe(200);
+    expect(await quantity(milkA)).toBe(999.667);
+    expect(await ledgerMismatches(kitchen.householdId)).toEqual([]);
+
+    await stockKitchen(kitchen, PASTA_STOCK);
+    await callWrite(client, 'start_cooking', { recipe_name: 'creamy spinach pasta' });
+    const tiny = await callWrite(client, 'propose_consumption', { overrides: [{ item: 'milk', quantity: 0.0004 }] });
+    expect(parseErrorResult(tiny)).toMatchObject({ code: 'invalid_quantity', item: 'milk' });
+  });
+
   it('is stale when a pinned batch changed, even if another batch could cover it (R20, FR-17)', async () => {
     const p = await propose(); // 250 ml milk, pinned to batch A
     await adjustBatch(kitchen.householdId, milkA, -1000); // A is thrown out; B still has 1000 ml

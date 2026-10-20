@@ -14,6 +14,7 @@ import { MAX_QUANTITY } from '../domain/intake.ts';
 import { type BaseUnit, findItem } from '../domain/items.ts';
 import { listAnd, speakQuantity } from '../domain/speech.ts';
 import { normalizeName } from '../domain/text.ts';
+import { roundQuantity } from '../domain/units.ts';
 import { NameInput } from '../mcp/schemas.ts';
 
 /** "I used 3 eggs": a total for one item, in base units; 0 removes the line. */
@@ -62,7 +63,7 @@ export async function proposeConsumption(
   input: ConsumeInput,
 ): Promise<ProposedConsumption> {
   const session = await lockActiveSession(tx, householdId, input.session_id);
-  const normalized = { session_id: session.id, overrides: input.overrides ?? [] };
+  const normalized = { session_id: session.id, overrides: (input.overrides ?? []).map(normalizeOverride) };
   const plan = await planConsumption(tx, session, normalized.overrides);
   const subjectKey = consumeSubject(session.id);
   const draft = (stateVersion: number) => ({
@@ -90,6 +91,18 @@ export async function proposeConsumption(
     [session.id],
   );
   return { ...(await upsertProposal(tx, householdId, draft(rows[0]!.state_version))), card: plan.payload.card };
+}
+
+/**
+ * Rounds an override to the stored precision up front, so the card says exactly what confirm will
+ * deduct. A positive amount too small to record is an error, not a silent "remove this line".
+ */
+function normalizeOverride(o: { item: string; quantity: number }): { item: string; quantity: number } {
+  const quantity = roundQuantity(o.quantity);
+  if (o.quantity > 0 && quantity === 0) {
+    throw new PantryError('invalid_quantity', `${o.quantity} of ${o.item} is too small to record.`, { item: o.item });
+  }
+  return { item: o.item, quantity };
 }
 
 /** Lines from the session plan plus overrides, allocated FEFO and pinned (§6.4). */
