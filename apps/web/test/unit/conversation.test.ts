@@ -71,9 +71,9 @@ class FakeApi {
 
 class InstantSynth implements Synth {
   said: string[] = [];
-  speak(text: string, done: () => void) {
+  speak(text: string, done: (outcome: 'completed') => void) {
     this.said.push(text);
-    done();
+    done('completed');
   }
   cancel() {}
 }
@@ -95,7 +95,7 @@ describe('Conversation', () => {
   let pendingAcks: Array<Promise<void>>;
   const build = () => {
     let conversation: Conversation | null = null;
-    const speaker = new Speaker({ synth, onSpeaking: () => {}, onSpoken: (m) => pendingAcks.push(conversation!.spoken(m)) });
+    const speaker = new Speaker({ synth, onSpeaking: () => {}, onHeard: (m) => pendingAcks.push(conversation!.heard(m)) });
     conversation = new Conversation({
       api: api as unknown as Api,
       speaker,
@@ -181,7 +181,7 @@ describe('Conversation', () => {
     expect(conversation.getState().entries.at(-1)).toMatchObject({ kind: 'notice', text: 'Too many requests. Wait a moment and try again.' });
   });
 
-  it('opens the voice window once a question has been spoken, until it ends or is answered', async () => {
+  it('opens the voice window once a question has been heard, until it ends or is answered', async () => {
     const conversation = build();
     await conversation.poll();
     api.inbox.push(message(1, { voice_prompt: { kind: 'proposal_confirm', proposal_id: 'p1', version: 1 }, cards: [proposalCard('p1')] }));

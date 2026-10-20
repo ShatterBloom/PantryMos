@@ -1,17 +1,21 @@
 // Speaks Mos's messages in order (IMPLEMENTATION_PLAN §8.5, §8.7). A message that asks something is
-// acknowledged once it has been spoken, which opens its voice window on the agent.
+// acknowledged only once it has been heard to the end, which opens its voice window on the agent:
+// a "yes" must never answer a read-back the user did not hear in full.
+
+/** How an utterance ended: played to the end, or cut off (cancelled, or the browser failed). */
+export type SpeechOutcome = 'completed' | 'interrupted';
 
 /** The browser's speechSynthesis, reduced to one utterance at a time. */
 export interface Synth {
-  /** Calls `done` when the utterance ended or failed. */
-  speak(text: string, done: () => void): void;
+  /** Calls `done` once the utterance ended. */
+  speak(text: string, done: (outcome: SpeechOutcome) => void): void;
   cancel(): void;
 }
 
 export interface Spoken {
   id: number;
   speech: string;
-  /** The message asked a question: ack it once spoken (§8.5). */
+  /** The message asked a question: ack it once heard (§8.5). */
   asks: boolean;
 }
 
@@ -23,12 +27,12 @@ export class Speaker {
   private muted = false;
   private readonly synth: Synth;
   private readonly onSpeaking: (speaking: boolean) => void;
-  private readonly onSpoken: (message: Spoken) => void;
+  private readonly onHeard: (message: Spoken) => void;
 
-  constructor(options: { synth: Synth; onSpeaking: (speaking: boolean) => void; onSpoken: (message: Spoken) => void }) {
+  constructor(options: { synth: Synth; onSpeaking: (speaking: boolean) => void; onHeard: (message: Spoken) => void }) {
     this.synth = options.synth;
     this.onSpeaking = options.onSpeaking;
-    this.onSpoken = options.onSpoken;
+    this.onHeard = options.onHeard;
   }
 
   get speaking(): boolean {
@@ -36,21 +40,21 @@ export class Speaker {
   }
 
   enqueue(message: Spoken): void {
-    if (message.speech.trim() === '') return;
+    if (message.speech.trim() === '' || this.muted) return;
     this.queue.push(message);
     this.next();
   }
 
   /**
-   * Muted, messages are not spoken but still count as delivered: one that asks is acknowledged
-   * right away, so the user can answer by voice or button as if they had heard it.
+   * Muted, messages are shown but not spoken, so none is heard: a question is answered by its
+   * card's buttons, not by voice.
    */
   setMuted(muted: boolean): void {
     this.muted = muted;
-    if (muted && this.current) this.synth.cancel();
+    if (muted) this.stop();
   }
 
-  /** Stops speaking and drops what is queued (e.g. leaving the page). */
+  /** Stops speaking and drops what is queued (the user started talking, or left the page). */
   stop(): void {
     this.queue.length = 0;
     if (this.current) this.synth.cancel();
@@ -60,22 +64,17 @@ export class Speaker {
     if (this.current) return;
     const message = this.queue.shift();
     if (!message) return;
-    if (this.muted) {
-      this.onSpoken(message);
-      this.next();
-      return;
-    }
     this.current = message;
     if (!this.reported) {
       this.reported = true;
       this.onSpeaking(true);
     }
     let finished = false;
-    this.synth.speak(message.speech, () => {
+    this.synth.speak(message.speech, (outcome) => {
       if (finished) return;
       finished = true;
       this.current = null;
-      this.onSpoken(message);
+      if (outcome === 'completed') this.onHeard(message);
       this.next();
       if (this.current === null && this.reported) {
         this.reported = false;

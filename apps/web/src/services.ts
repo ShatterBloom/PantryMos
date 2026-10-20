@@ -17,8 +17,9 @@ export interface Services {
   onHandsFreeChange(listener: () => void): () => void;
 }
 
+/** No speech synthesis: nothing is heard, so questions are answered by their cards' buttons. */
 const silentSynth: Synth = {
-  speak: (_text, done) => setTimeout(done, 0),
+  speak: (_text, done) => setTimeout(() => done('interrupted'), 0),
   cancel: () => {},
 };
 
@@ -32,7 +33,7 @@ export function createServices(askPasscode: () => Promise<string | null>): Servi
   const speaker = new Speaker({
     synth: speechSynthesisAvailable() ? createSynth() : silentSynth,
     onSpeaking: (speaking) => handsFree?.setSpeaking(speaking),
-    onSpoken: (message) => void conversation?.spoken(message),
+    onHeard: (message) => void conversation?.heard(message),
   });
   const convo = new Conversation({
     api,

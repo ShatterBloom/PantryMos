@@ -1,70 +1,81 @@
-// Speaking messages in order, reporting when each has been heard (§8.5 read-back ack, §8.7 echo control).
+// Speaking messages in order; only a message heard to the end counts as heard (§8.5 read-back ack, §8.7).
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Speaker, type Spoken, type Synth } from '../../src/lib/speaker.ts';
+import { Speaker, type SpeechOutcome, type Spoken, type Synth } from '../../src/lib/speaker.ts';
 
 class FakeSynth implements Synth {
   said: string[] = [];
   cancels = 0;
-  private pending: Array<() => void> = [];
-  speak(text: string, done: () => void) {
+  private pending: Array<(outcome: SpeechOutcome) => void> = [];
+  speak(text: string, done: (outcome: SpeechOutcome) => void) {
     this.said.push(text);
     this.pending.push(done);
   }
   cancel() {
     this.cancels++;
-    this.finish();
+    this.finish('interrupted');
   }
-  /** The current utterance ends (its callback may fire twice, as browsers do on cancel). */
-  finish() {
+  /** The current utterance ends (browsers may report it twice, e.g. error then end on cancel). */
+  finish(outcome: SpeechOutcome = 'completed') {
     const done = this.pending.shift();
-    done?.();
-    done?.();
+    done?.(outcome);
+    done?.('completed');
   }
 }
 
 describe('Speaker', () => {
   let synth: FakeSynth;
   let speaking: boolean[];
-  let spoken: Spoken[];
+  let heard: Spoken[];
   let speaker: Speaker;
   beforeEach(() => {
     synth = new FakeSynth();
     speaking = [];
-    spoken = [];
-    speaker = new Speaker({ synth, onSpeaking: (s) => speaking.push(s), onSpoken: (m) => spoken.push(m) });
+    heard = [];
+    speaker = new Speaker({ synth, onSpeaking: (s) => speaking.push(s), onHeard: (m) => heard.push(m) });
   });
 
   const msg = (id: number, speech: string, asks = false): Spoken => ({ id, speech, asks });
 
-  it('speaks one message at a time, in order, and reports each once heard', () => {
+  it('speaks one message at a time, in order, and reports each once heard to the end', () => {
     speaker.enqueue(msg(1, 'Step 1.'));
     speaker.enqueue(msg(2, "I'll record that. Say confirm.", true));
     expect(synth.said).toEqual(['Step 1.']);
     expect(speaker.speaking).toBe(true);
     synth.finish();
     expect(synth.said).toEqual(['Step 1.', "I'll record that. Say confirm."]);
-    expect(spoken.map((m) => m.id)).toEqual([1]);
+    expect(heard.map((m) => m.id)).toEqual([1]);
     synth.finish();
-    expect(spoken).toEqual([msg(1, 'Step 1.'), msg(2, "I'll record that. Say confirm.", true)]);
+    expect(heard).toEqual([msg(1, 'Step 1.'), msg(2, "I'll record that. Say confirm.", true)]);
     // Speaking is reported as one stretch, so listening does not resume between messages.
     expect(speaking).toEqual([true, false]);
     expect(speaker.speaking).toBe(false);
   });
 
+  it('does not count a message cut off or failed as heard', () => {
+    speaker.enqueue(msg(1, "I'll record that. Say confirm.", true));
+    speaker.stop(); // the user pressed push-to-talk
+    expect(heard).toEqual([]);
+    expect(speaking).toEqual([true, false]);
+
+    speaker.enqueue(msg(2, 'Say confirm.', true));
+    synth.finish('interrupted'); // the browser failed to speak it
+    expect(heard).toEqual([]);
+  });
+
   it('skips empty speech', () => {
     speaker.enqueue(msg(1, '  '));
     expect(synth.said).toEqual([]);
-    expect(spoken).toEqual([]);
+    expect(heard).toEqual([]);
   });
 
-  it('muted, delivers without speaking, so a question can still be answered', () => {
+  it('muted, speaks nothing and hears nothing, so questions are answered by buttons', () => {
     speaker.enqueue(msg(1, 'A long answer.'));
     speaker.enqueue(msg(4, 'Queued behind it.'));
-    speaker.setMuted(true); // cuts the current message short
+    speaker.setMuted(true); // cuts the current message short and drops the queue
     expect(synth.cancels).toBe(1);
     speaker.enqueue(msg(2, 'Say confirm.', true));
     expect(synth.said).toEqual(['A long answer.']);
-    expect(spoken.map((m) => m.id)).toEqual([1, 4, 2]);
+    expect(heard).toEqual([]);
     expect(speaking).toEqual([true, false]); // listening may resume
     speaker.setMuted(false);
     speaker.enqueue(msg(3, 'Back.'));

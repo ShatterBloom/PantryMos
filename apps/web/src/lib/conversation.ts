@@ -182,8 +182,8 @@ export class Conversation {
     }
   }
 
-  /** Called by the Speaker: a message that asked something has been heard, so open its window. */
-  spoken = async (message: Spoken): Promise<void> => {
+  /** Called by the Speaker: a message that asked something was heard in full, so open its window. */
+  heard = async (message: Spoken): Promise<void> => {
     if (!message.asks) return;
     const asked = this.state.entries.find((e) => e.kind === 'mos' && e.message.id === message.id);
     const prompt = asked?.kind === 'mos' ? asked.message.voice_prompt : null;

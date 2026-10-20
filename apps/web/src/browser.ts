@@ -53,17 +53,27 @@ export function createRecognizer(continuous: boolean): Recognizer | null {
   return recognizer;
 }
 
+/**
+ * Chrome ends a cancelled utterance with `error` ("interrupted"/"canceled") or, in some versions,
+ * with `end`; the cancelled flag makes both read as interrupted, so only a full play is "completed".
+ */
 export function createSynth(): Synth {
+  let current: { cancelled: boolean } | null = null;
   return {
     speak(text, done) {
+      const state = { cancelled: false };
+      current = state;
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'en-US';
       utterance.rate = 1.05;
-      utterance.onend = done;
-      utterance.onerror = done;
+      utterance.onend = () => done(state.cancelled ? 'interrupted' : 'completed');
+      utterance.onerror = () => done('interrupted');
       window.speechSynthesis.speak(utterance);
     },
-    cancel: () => window.speechSynthesis.cancel(),
+    cancel() {
+      if (current) current.cancelled = true;
+      window.speechSynthesis.cancel();
+    },
   };
 }
 
