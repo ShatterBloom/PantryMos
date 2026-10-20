@@ -76,3 +76,10 @@ export function ambiguousItemError(spoken: string, options: readonly CatalogItem
     options: names,
   });
 }
+
+/** The item the user named, or null if the catalog has none; asks which one when ambiguous. */
+export function findItem(spoken: string, catalog: readonly CatalogItem[]): CatalogItem | null {
+  const r = resolveItem(spoken, catalog);
+  if (r.kind === 'ambiguous') throw ambiguousItemError(spoken, r.options);
+  return r.kind === 'found' ? r.item : null;
+}

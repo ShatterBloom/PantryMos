@@ -6,16 +6,8 @@ import { demandByItem } from '../../domain/cooking.ts';
 import { PantryError } from '../../domain/errors.ts';
 import type { ToolContext } from '../context.ts';
 import { StepOut, stepOut } from '../schemas.ts';
+import { UsageLineOut, usageLines } from '../sessionView.ts';
 import { runReadTool } from '../toolkit.ts';
-
-const UsageLine = z.object({
-  item: z.string(),
-  quantity: z.number(),
-  unit: z.string(),
-  status: z.enum(['planned', 'skipped']),
-  origin: z.enum(['recipe', 'substitute']),
-  replaces: z.string().nullable(),
-});
 
 export function registerGetSession(server: McpServer, ctx: ToolContext): void {
   server.registerTool(
@@ -33,7 +25,7 @@ export function registerGetSession(server: McpServer, ctx: ToolContext): void {
         state: z.string(),
         current_step: z.number(),
         ...StepOut,
-        planned_usage: z.array(UsageLine),
+        planned_usage: z.array(UsageLineOut),
         plan_coverage: z.array(z.object({ item: z.string(), planned: z.number(), available: z.number(), short: z.number() })),
         effective_usage: z.array(z.object({ item: z.string(), quantity: z.number(), unit: z.string() })).nullable(),
       },
@@ -73,14 +65,7 @@ export function registerGetSession(server: McpServer, ctx: ToolContext): void {
             state: session.state,
             current_step: session.current_step,
             ...stepOut(step, session.total_steps),
-            planned_usage: session.planned_usage.map((l) => ({
-              item: name(l.item_id),
-              quantity: l.quantity,
-              unit: unit(l.item_id),
-              status: l.status,
-              origin: l.origin,
-              replaces: l.replaces_item_id ? name(l.replaces_item_id) : null,
-            })),
+            planned_usage: usageLines(session.planned_usage, items),
             plan_coverage: coverage,
             effective_usage: effective,
           },

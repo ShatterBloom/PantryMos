@@ -1,6 +1,16 @@
 // Recipe makeability, substitutions and planned usage (§6.3, start_cooking contract).
 import { describe, expect, it } from 'vitest';
-import { analyzeRecipe, type AnalysisInput, demandByItem, type ItemInfo, requireMakeable } from '../../src/domain/cooking.ts';
+import {
+  analyzeRecipe,
+  type AnalysisInput,
+  applySubstitute,
+  demandByItem,
+  type ItemInfo,
+  type PlannedLine,
+  requireMakeable,
+  skipItem,
+  substituteOptions,
+} from '../../src/domain/cooking.ts';
 import type { PantryError } from '../../src/domain/errors.ts';
 import type { Ingredient } from '../../src/domain/recipes.ts';
 
@@ -177,5 +187,52 @@ describe('requireMakeable', () => {
       options: ['onion', 'leek'],
       ask: 'Use onion or leek instead of scallion?',
     });
+  });
+});
+
+describe('plan edits during cooking', () => {
+  const plan: PlannedLine[] = [
+    { item_id: 'pasta', quantity: 300, status: 'planned', origin: 'recipe' },
+    { item_id: 'scallion', quantity: 2, status: 'planned', origin: 'recipe' },
+    { item_id: 'onion', quantity: 1, status: 'planned', origin: 'recipe' },
+  ];
+  const scallion = ing('scallion', 2, { substitutes: [{ item_id: 'onion', ratio: 0.5 }, { item_id: 'leek', ratio: 1 }] });
+  const scale = (quantity: number) => quantity; // same servings as the recipe
+
+  it('offers substitutes covered by stock after the rest of the plan', () => {
+    // 1 onion is already planned elsewhere; the swap needs 1 more.
+    expect(substituteOptions(plan, scallion, scale, new Map([['onion', 1.5], ['leek', 2]]))).toEqual([
+      { to_item_id: 'leek', quantity: 2 },
+    ]);
+    expect(substituteOptions(plan, scallion, scale, new Map([['onion', 2]]))).toEqual([{ to_item_id: 'onion', quantity: 1 }]);
+  });
+
+  it('does not count a substitute already standing in for the same ingredient against itself', () => {
+    const swapped = applySubstitute(plan, 'scallion', { to_item_id: 'leek', quantity: 2 });
+    expect(substituteOptions(swapped, scallion, scale, new Map([['leek', 2]]))).toEqual([{ to_item_id: 'leek', quantity: 2 }]);
+  });
+
+  it('replaces the ingredient: recipe line skipped, substitute line right after it', () => {
+    expect(applySubstitute(plan, 'scallion', { to_item_id: 'leek', quantity: 2 })).toEqual([
+      plan[0],
+      { item_id: 'scallion', quantity: 2, status: 'skipped', origin: 'recipe' },
+      { item_id: 'leek', quantity: 2, status: 'planned', origin: 'substitute', replaces_item_id: 'scallion' },
+      plan[2],
+    ]);
+  });
+
+  it('switches from one substitute to another without leaving the old one behind', () => {
+    const first = applySubstitute(plan, 'scallion', { to_item_id: 'leek', quantity: 2 });
+    const second = applySubstitute(first, 'scallion', { to_item_id: 'onion', quantity: 1 });
+    expect(second.filter((l) => l.replaces_item_id === 'scallion')).toEqual([
+      { item_id: 'onion', quantity: 1, status: 'planned', origin: 'substitute', replaces_item_id: 'scallion' },
+    ]);
+    expect(applySubstitute(second, 'scallion', { to_item_id: 'onion', quantity: 1 })).toEqual(second);
+  });
+
+  it('skips every planned line of an item and is a no-op when repeated', () => {
+    const skipped = skipItem(plan, 'pasta');
+    expect(skipped[0]).toEqual({ item_id: 'pasta', quantity: 300, status: 'skipped', origin: 'recipe' });
+    expect(skipItem(skipped, 'pasta')).toEqual(skipped);
   });
 });

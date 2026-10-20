@@ -1,11 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ToolContext } from './context.ts';
+import { registerCancelCooking } from './tools/cancelCooking.ts';
 import { registerExpiringSoon } from './tools/expiringSoon.ts';
 import { registerGetSession } from './tools/getSession.ts';
 import { registerListInventory } from './tools/listInventory.ts';
 import { registerNextStep } from './tools/nextStep.ts';
 import { registerProposeIntake } from './tools/proposeIntake.ts';
+import { registerSkipIngredient } from './tools/skipIngredient.ts';
 import { registerStartCooking } from './tools/startCooking.ts';
+import { registerSubstitute } from './tools/substitute.ts';
 
 export const SERVER_INFO = { name: 'pantrymos', version: '0.1.0' } as const;
 
@@ -22,5 +25,8 @@ export function buildMcpServer(ctx: ToolContext): McpServer {
   registerStartCooking(server, ctx);
   registerGetSession(server, ctx);
   registerNextStep(server, ctx);
+  registerSubstitute(server, ctx);
+  registerSkipIngredient(server, ctx);
+  registerCancelCooking(server, ctx);
   return server;
 }

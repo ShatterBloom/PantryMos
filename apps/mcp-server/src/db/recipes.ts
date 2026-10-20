@@ -9,6 +9,14 @@ export async function loadRecipes(q: Queryable, householdId: string): Promise<Re
   return rows;
 }
 
+export async function loadRecipe(q: Queryable, recipeId: string): Promise<RecipeRef> {
+  const { rows } = await q.query<RecipeRef>(`SELECT id, name, aliases, servings FROM pantry.recipes WHERE id = $1`, [
+    recipeId,
+  ]);
+  if (!rows[0]) throw new Error(`Unknown recipe ${recipeId}`);
+  return rows[0];
+}
+
 export async function loadIngredients(q: Queryable, recipeId: string): Promise<Ingredient[]> {
   const { rows } = await q.query<Omit<Ingredient, 'quantity'> & { quantity: string }>(
     `SELECT ri.item_id, i.name AS item, i.base_unit, ri.quantity::text AS quantity, ri.optional, ri.substitutes

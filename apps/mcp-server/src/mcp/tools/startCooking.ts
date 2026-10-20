@@ -7,7 +7,7 @@ import { availableByItem, itemInfo } from '../../db/sessions.ts';
 import type { Tx } from '../../db/tx.ts';
 import { analyzeRecipe, requireMakeable } from '../../domain/cooking.ts';
 import { PantryError } from '../../domain/errors.ts';
-import { ambiguousItemError, type CatalogItem, resolveItem } from '../../domain/items.ts';
+import { type CatalogItem, findItem } from '../../domain/items.ts';
 import { resolveRecipe } from '../../domain/recipes.ts';
 import type { ToolContext } from '../context.ts';
 import { NameInput, StepOut, stepOut } from '../schemas.ts';
@@ -119,8 +119,7 @@ async function rejectIfCooking(tx: Tx, householdId: string): Promise<void> {
 }
 
 function itemIdFor(spoken: string, catalog: readonly CatalogItem[]): string {
-  const r = resolveItem(spoken, catalog);
-  if (r.kind === 'found') return r.item.id;
-  if (r.kind === 'ambiguous') throw ambiguousItemError(spoken, r.options);
-  throw new PantryError('invalid_substitution', `There is no ${spoken} in the catalog.`, { item: spoken });
+  const item = findItem(spoken, catalog);
+  if (!item) throw new PantryError('invalid_substitution', `There is no ${spoken} in the catalog.`, { item: spoken });
+  return item.id;
 }

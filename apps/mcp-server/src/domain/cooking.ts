@@ -157,3 +157,59 @@ export function demandByItem(lines: readonly PlannedLine[]): Map<string, number>
   }
   return demand;
 }
+
+/** The plan without the recipe line for `fromItemId` and any substitute standing in for it. */
+function withoutIngredient(plan: readonly PlannedLine[], fromItemId: string): PlannedLine[] {
+  return plan.filter(
+    (l) => !(l.origin === 'recipe' && l.item_id === fromItemId) && l.replaces_item_id !== fromItemId,
+  );
+}
+
+/**
+ * In-stock substitutes for one ingredient of an active plan (§7.4 substitute without to_item):
+ * author-defined, scaled to the session's servings, and covered by stock after the rest of the plan.
+ */
+export function substituteOptions(
+  plan: readonly PlannedLine[],
+  ingredient: Ingredient,
+  scale: (quantity: number, itemId: string) => number,
+  available: ReadonlyMap<string, number>,
+): SubstitutionOption[] {
+  const otherDemand = demandByItem(withoutIngredient(plan, ingredient.item_id));
+  return ingredient.substitutes
+    .map((s) => ({ to_item_id: s.item_id, quantity: scale(ingredient.quantity * s.ratio, s.item_id) }))
+    .filter((o) => o.quantity + (otherDemand.get(o.to_item_id) ?? 0) <= (available.get(o.to_item_id) ?? 0));
+}
+
+/**
+ * Replaces an ingredient with a substitute in the plan: the recipe line becomes skipped, any earlier
+ * substitute for it is dropped, and the new substitute line follows the recipe line.
+ */
+export function applySubstitute(
+  plan: readonly PlannedLine[],
+  fromItemId: string,
+  option: SubstitutionOption,
+): PlannedLine[] {
+  const result: PlannedLine[] = [];
+  for (const line of plan) {
+    if (line.replaces_item_id === fromItemId) continue;
+    if (line.origin === 'recipe' && line.item_id === fromItemId) {
+      result.push({ ...line, status: 'skipped' });
+      result.push({
+        item_id: option.to_item_id,
+        quantity: option.quantity,
+        status: 'planned',
+        origin: 'substitute',
+        replaces_item_id: fromItemId,
+      });
+    } else {
+      result.push(line);
+    }
+  }
+  return result;
+}
+
+/** Marks every planned line of an item as skipped. */
+export function skipItem(plan: readonly PlannedLine[], itemId: string): PlannedLine[] {
+  return plan.map((l) => (l.item_id === itemId && l.status === 'planned' ? { ...l, status: 'skipped' } : l));
+}

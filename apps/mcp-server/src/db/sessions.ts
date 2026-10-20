@@ -1,4 +1,5 @@
 // Cooking sessions (IMPLEMENTATION_PLAN §2.1, §3.1, §7.2).
+import { canonicalJson } from '@pantrymos/shared';
 import type { PlannedLine } from '../domain/cooking.ts';
 import { PantryError } from '../domain/errors.ts';
 import type { BaseUnit } from '../domain/items.ts';
@@ -92,4 +93,33 @@ export async function effectiveUsage(q: Queryable, sessionId: string): Promise<M
     [sessionId],
   );
   return new Map(rows.map((r) => [r.item_id, Number(r.used)]));
+}
+
+/** consume proposals are keyed per session (§4.1). */
+export const consumeSubject = (sessionId: string) => `consume:session:${sessionId}`;
+
+/** A pending consume card no longer matches the plan: it can never be confirmed (§3.1, §3.2). */
+export async function supersedePendingConsume(tx: Tx, sessionId: string): Promise<void> {
+  await tx.query(
+    `UPDATE pantry.proposals SET status = 'superseded', updated_at = now()
+      WHERE subject_key = $1 AND status = 'pending'`,
+    [consumeSubject(sessionId)],
+  );
+}
+
+/**
+ * Stores a changed plan (§3.1 substitute / skip_ingredient): bumps state_version, returns an
+ * awaiting session to cooking and supersedes its card. An identical plan changes nothing.
+ * Returns whether anything changed.
+ */
+export async function updatePlan(tx: Tx, session: SessionRow, plan: readonly PlannedLine[]): Promise<boolean> {
+  if (canonicalJson(plan) === canonicalJson(session.planned_usage)) return false;
+  await tx.query(
+    `UPDATE pantry.cooking_sessions
+        SET planned_usage = $2, state = 'cooking', state_version = state_version + 1
+      WHERE id = $1`,
+    [session.id, JSON.stringify(plan)],
+  );
+  await supersedePendingConsume(tx, session.id);
+  return true;
 }
