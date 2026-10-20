@@ -1,13 +1,17 @@
 // The demo seed against real Postgres: idempotent, and its tokens authenticate.
 import { randomBytes, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CATALOG } from '../../../../db/seed/catalog.ts';
 import { RECIPES } from '../../../../db/seed/recipes.ts';
+import { MIGRATIONS_DIR } from '../../../../scripts/lib/migrator.ts';
 import { INSPECTOR_CLIENT_NAME, seedDemo } from '../../../../scripts/lib/seed.ts';
 import { createPool, type Pool } from '../../src/db/pool.ts';
 import { resolveClient } from '../../src/security/auth.ts';
 import { TEST_ADMIN_URL, TEST_MCP_DB_URL } from '../../../../test/env.ts';
+import { createBatch } from '../../../../test/fixtures.ts';
 
 describe('seedDemo', () => {
   const admin = new pg.Client({ connectionString: TEST_ADMIN_URL });
@@ -114,6 +118,40 @@ describe('seedDemo', () => {
     expect(second.inspectorToken).not.toBeNull();
     expect(second.inspectorToken).not.toBe(first.inspectorToken);
     expect(await resolveClient(pool, first.inspectorToken!)).toBeNull();
+  });
+
+  it('upgrades a catalog seeded with the old garlic item in place, keeping its id and stock (0004)', async () => {
+    const options = fresh();
+    const oldGarlic = randomUUID();
+    const ownGarlic = randomUUID();
+    const other = fresh();
+    await admin.query(`INSERT INTO pantry.households (id, name) VALUES ($1, 'old'), ($2, 'own')`, [options.householdId, other.householdId]);
+    await admin.query(
+      `INSERT INTO pantry.items (id, household_id, name, aliases, base_unit, category, default_shelf_days)
+       VALUES ($1, $2, 'garlic', '{garlic clove}', 'count', 'produce', 30),
+              ($3, $4, 'garlic', '{}', 'g', 'produce', 30)`,
+      [oldGarlic, options.householdId, ownGarlic, other.householdId],
+    );
+    const batch = await createBatch(options.householdId, oldGarlic, { quantity: 6, purchased_at: '2026-10-01' });
+
+    await admin.query(readFileSync(join(MIGRATIONS_DIR, '0004_garlic_clove.sql'), 'utf8'));
+    await seedDemo(admin, options);
+
+    const garlic = await admin.query(
+      `SELECT id, name, aliases FROM pantry.items WHERE household_id = $1 AND (name ILIKE 'garlic%' OR 'garlic' = ANY (aliases))`,
+      [options.householdId],
+    );
+    expect(garlic.rows).toEqual([{ id: oldGarlic, name: 'garlic clove', aliases: ['garlic'] }]);
+    const used = await admin.query(
+      `SELECT ri.item_id FROM pantry.recipe_ingredients ri JOIN pantry.recipes r ON r.id = ri.recipe_id
+        WHERE r.household_id = $1 AND r.name = 'creamy spinach pasta' AND ri.item_id = $2`,
+      [options.householdId, oldGarlic],
+    );
+    expect(used.rowCount).toBe(1);
+    expect((await admin.query(`SELECT item_id FROM pantry.batches WHERE id = $1`, [batch])).rows[0].item_id).toBe(oldGarlic);
+
+    const own = await admin.query(`SELECT name, aliases FROM pantry.items WHERE id = $1`, [ownGarlic]);
+    expect(own.rows[0]).toEqual({ name: 'garlic', aliases: [] });
   });
 
   it('rolls back everything if a step fails', async () => {
