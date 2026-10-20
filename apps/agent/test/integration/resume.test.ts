@@ -117,7 +117,11 @@ describe('resuming a crashed turn', () => {
     agent.model.push(() => {
       throw new Error('model unavailable');
     });
-    expect((await chat(agent, 'what can I cook?', { requestId })).status).toBe(500);
+    // The fault is not described to the client.
+    expect(await chat(agent, 'what can I cook?', { requestId })).toMatchObject({
+      status: 500,
+      body: { error: 'internal_error', message: 'Something went wrong. Please try again.' },
+    });
     agent.model.push(say('Pasta.'));
     expect((await chat(agent, 'what can I cook?', { requestId })).status).toBe(200);
     expect(await userMessages()).toEqual([{ n: 1 }]);

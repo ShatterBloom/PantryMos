@@ -55,6 +55,14 @@ export async function buildAgentApp(config: AgentConfig, pool: Pool, options: Ag
   // §11.5: per-route limits only (/api/chat); everything else is unlimited here.
   await app.register(rateLimit, { global: false });
 
+  // The agent is the public entry point: a fault is logged, never described to the client.
+  app.setErrorHandler((err: { statusCode?: number }, request, reply) => {
+    const status = err.statusCode ?? 500;
+    if (status < 500) return reply.send(err);
+    request.log.error({ err }, 'request failed');
+    return reply.code(500).send({ error: 'internal_error', message: 'Something went wrong. Please try again.' });
+  });
+
   app.get('/api/health', async (_request, reply) => {
     const report: HealthReport = { ok: false, db: false, mcp: { ok: false, tools: [] }, internal: false };
 
