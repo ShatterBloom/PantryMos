@@ -6,6 +6,7 @@ import { type RunningServers, startServers } from '../../src/app.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
   callWrite,
+  confirmCard,
   connectMcpClient,
   createDemoKitchen,
   type DemoKitchen,
@@ -14,7 +15,6 @@ import {
   PASTA_STOCK,
   startPasta,
   stockKitchen,
-  withAdmin,
 } from '../../../../test/fixtures.ts';
 
 interface Listed {
@@ -90,12 +90,13 @@ describe('list_recent_operations', () => {
     expect(all.some((o) => o.changes.some((c) => c.item === 'egg'))).toBe(false);
 
     const [latest] = out.operations;
-    // Mark it reverted the way an undo does (replaced by a real undo once propose_undo exists).
-    await withAdmin((admin) =>
-      admin.query(`UPDATE pantry.operations SET reverted_by_op = id WHERE id = $1`, [latest!.operation_id]),
-    );
-    const again = await list({ limit: 1 });
-    expect(again.out.operations[0]).toMatchObject({ operation_id: latest!.operation_id, reverted: true });
-    expect(again.text).toMatch(/\(undone\)\.$/);
+    const undo = (await callWrite(client, 'propose_undo', { target: latest!.operation_id })).structuredContent as {
+      proposal_id: string;
+    };
+    expect((await confirmCard(servers, undo, 1)).status).toBe(200);
+    const again = await list({ limit: 2 });
+    expect(again.out.operations[0]).toMatchObject({ kind: 'undo', reverted: false });
+    expect(again.out.operations[0]!.summary).toMatch(/^Undo: −/);
+    expect(again.out.operations[1]).toMatchObject({ operation_id: latest!.operation_id, reverted: true });
   });
 });

@@ -27,7 +27,6 @@ export async function editProposal(pool: Pool, proposalId: string, body: EditBod
   const head = await proposalHead(pool, proposalId);
   if (!head) return notFound();
   const planner = PLANNERS[head.kind];
-  if (!planner) return badRequest(`${head.kind} cards cannot be edited yet.`);
   const changes = planner.Changes.safeParse(body.changes);
   if (!changes.success) return badRequest('Invalid changes for this card.', changes.error.issues);
 
@@ -56,7 +55,6 @@ export async function regenerateProposal(pool: Pool, proposalId: string, body: R
   const head = await proposalHead(pool, proposalId);
   if (!head) return notFound();
   const planner = PLANNERS[head.kind];
-  if (!planner) return badRequest(`${head.kind} cards cannot be refreshed yet.`);
 
   return runIdempotent(
     pool,

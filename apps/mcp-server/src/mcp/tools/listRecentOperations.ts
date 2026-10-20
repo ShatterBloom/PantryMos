@@ -46,10 +46,8 @@ export function registerListRecentOperations(server: McpServer, ctx: ToolContext
             created_at: op.created_at.toISOString(),
           };
         });
-        const latest = operations[0];
-        const text = latest
-          ? `Latest: ${latest.summary}${latest.reverted ? ' (undone)' : ''}.`
-          : 'Nothing has been recorded yet.';
+        // The latest operation is never reverted: an undo is always newer than what it reverts.
+        const text = operations[0] ? `Latest: ${operations[0].summary}.` : 'Nothing has been recorded yet.';
         return { data: { operations }, text };
       }),
   );

@@ -12,6 +12,7 @@ import { intakeExecutor } from './intake.ts';
 import { reviseExecutor } from './revise.ts';
 import { lockActionableProposal, markExpired, notFound, proposalHousehold } from './lock.ts';
 import type { Executor, LockedProposal } from './types.ts';
+import { undoExecutor } from './undo.ts';
 
 export const ConfirmBody = z
   .object({
@@ -29,12 +30,12 @@ export const ConfirmBody = z
 
 export type ConfirmBody = z.infer<typeof ConfirmBody>;
 
-/** Kinds without an executor yet: undo (M3). */
-const EXECUTORS: Partial<Record<ProposalKind, Executor>> = {
+const EXECUTORS: Record<ProposalKind, Executor> = {
   intake: intakeExecutor,
   consume: consumeExecutor,
   revise_consumption: reviseExecutor,
   adjust: adjustExecutor,
+  undo: undoExecutor,
 };
 
 /** Catalog constraints a concurrent creator could hit despite the advisory locks (§4.3 step 3). */
@@ -70,7 +71,6 @@ async function confirmLocked(tx: Tx, proposalId: string, householdId: string, bo
   }
 
   const executor = EXECUTORS[proposal.kind];
-  if (!executor) throw new Error(`No executor for proposal kind ${proposal.kind}`);
 
   const staleReason = await executor.lockAndCheck(tx, proposal);
   if (staleReason !== null) return markStale(tx, proposal, body, staleReason);

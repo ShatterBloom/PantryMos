@@ -10,6 +10,7 @@ import { registerProposeAdjustment } from './tools/proposeAdjustment.ts';
 import { registerProposeConsumption } from './tools/proposeConsumption.ts';
 import { registerProposeConsumptionRevision } from './tools/proposeConsumptionRevision.ts';
 import { registerProposeIntake } from './tools/proposeIntake.ts';
+import { registerProposeUndo } from './tools/proposeUndo.ts';
 import { registerSkipIngredient } from './tools/skipIngredient.ts';
 import { registerStartCooking } from './tools/startCooking.ts';
 import { registerSubstitute } from './tools/substitute.ts';
@@ -37,6 +38,7 @@ export function buildMcpServer(ctx: ToolContext): McpServer {
   registerProposeConsumption(server, ctx);
   registerProposeConsumptionRevision(server, ctx);
   registerProposeAdjustment(server, ctx);
+  registerProposeUndo(server, ctx);
   registerListRecentOperations(server, ctx);
   return server;
 }

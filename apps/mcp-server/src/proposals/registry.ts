@@ -8,6 +8,7 @@ import { AdjustInput, proposeAdjustment } from './adjust.ts';
 import { type ConsumeInput, ConsumeOverrides, mergeOverrides, proposeConsumption } from './consume.ts';
 import { type IntakeInput, IntakeItems, proposeIntake } from './intake.ts';
 import { proposeRevision, type ReviseInput, RevisionUsage } from './revise.ts';
+import { proposeUndo, UndoInput } from './undo.ts';
 
 export interface Planner {
   /** Schema of the `changes` a card edit may send for this kind. */
@@ -16,8 +17,7 @@ export interface Planner {
   propose(tx: Tx, householdId: string, conversationId: string, input: unknown): Promise<ProposalRef & { card: Card }>;
 }
 
-/** undo registers here too once it exists (M3). */
-export const PLANNERS: Partial<Record<ProposalKind, Planner>> = {
+export const PLANNERS: Record<ProposalKind, Planner> = {
   intake: {
     // The app sends the full edited item list.
     Changes: z.object({ items: IntakeItems }),
@@ -54,5 +54,11 @@ export const PLANNERS: Partial<Record<ProposalKind, Planner>> = {
       return { ...rest, ...(changes as Pick<AdjustInput, 'delta' | 'set_quantity'>) };
     },
     propose: (tx, householdId, conversationId, input) => proposeAdjustment(tx, householdId, conversationId, input as AdjustInput),
+  },
+  undo: {
+    // An undo card has nothing to edit; Refresh re-plans the stored target.
+    Changes: z.never(),
+    merge: (input) => input,
+    propose: (tx, householdId, conversationId, input) => proposeUndo(tx, householdId, conversationId, input as UndoInput),
   },
 };
