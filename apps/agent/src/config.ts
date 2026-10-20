@@ -24,6 +24,8 @@ const ConfigSchema = z.object({
   /** Origins allowed to make state-changing /api requests (§11.4). */
   appOrigins: z.preprocess(csv, z.array(z.url()).min(1)).default(['http://localhost:7400', 'http://127.0.0.1:7400']),
   chatRatePerMinute: z.coerce.number().int().positive().default(30),
+  /** The built web app (apps/web/dist) to serve at /; unset in development, where Vite serves it. */
+  webDir: z.string().min(1).optional(),
   session: z.object({
     /** Signs the session cookie (§11.4). */
     secret: z.string().min(32, 'AGENT_SESSION_SECRET must be at least 32 characters'),
@@ -63,6 +65,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     userId: env.AGENT_USER_ID,
     appOrigins: env.AGENT_APP_ORIGINS,
     chatRatePerMinute: env.AGENT_CHAT_RATE_PER_MINUTE,
+    webDir: env.AGENT_WEB_DIR || undefined,
     session: {
       secret: env.AGENT_SESSION_SECRET,
       passcode: env.AGENT_PASSCODE || undefined,

@@ -1,4 +1,5 @@
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { registerAuth } from './auth.ts';
 import type { AgentConfig } from './config.ts';
@@ -109,6 +110,9 @@ export async function buildAgentApp(config: AgentConfig, pool: Pool, options: Ag
     ...(options.leaseTiming ? { leaseTiming: options.leaseTiming } : {}),
     ...(options.windowMs ? { windowMs: options.windowMs } : {}),
   });
+
+  // The web app, from the same origin as /api (§11.4).
+  if (config.webDir) await app.register(fastifyStatic, { root: config.webDir, index: 'index.html' });
 
   if (options.workers !== false) workers.start();
   app.addHook('onClose', async () => workers.stop());

@@ -1,5 +1,8 @@
 // The web view's reads (§8.8): inventory and ledger proxied for the agent's household, timers, and a card's state.
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '@pantrymos/mcp-server';
@@ -38,6 +41,24 @@ describe('web view reads', () => {
     const res = await agent.api({ method: 'GET', url });
     return { status: res.statusCode, body: res.json() as Record<string, unknown> };
   };
+
+  it('serves the built web app from the same origin, without a session', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'pantrymos-web-'));
+    await writeFile(join(dir, 'index.html'), '<!doctype html><title>PantryMos</title>');
+    const served = await startAgent(servers, kitchen, { config: { webDir: dir } });
+    try {
+      const page = await served.app.inject({ method: 'GET', url: '/' });
+      expect(page.statusCode).toBe(200);
+      expect(page.headers['content-type']).toMatch(/^text\/html/);
+      expect(page.body).toContain('<title>PantryMos</title>');
+      expect((await served.app.inject({ method: 'GET', url: '/../package.json' })).statusCode).toBe(404);
+      expect((await served.app.inject({ method: 'GET', url: '/api/inventory' })).statusCode).toBe(401);
+    } finally {
+      await served.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+    expect((await agent.app.inject({ method: 'GET', url: '/' })).statusCode).toBe(404); // not configured
+  });
 
   it("serves the household's inventory and ledger", async () => {
     await stockKitchen(kitchen, { egg: 12, tomato: 4, 'olive oil': 100, scallion: 2 });

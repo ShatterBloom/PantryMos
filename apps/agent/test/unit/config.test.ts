@@ -69,5 +69,7 @@ describe('agent loadConfig', () => {
       loadConfig({ ...REQUIRED, AGENT_PASSCODE: 'open-sesame', AGENT_SECURE_COOKIE: 'true', AGENT_SESSION_TTL_SECONDS: '600' }).session,
     ).toEqual({ secret: REQUIRED.AGENT_SESSION_SECRET, passcode: 'open-sesame', secureCookie: true, ttlSeconds: 600 });
     expect(loadConfig({ ...REQUIRED, AGENT_PASSCODE: '' }).session.passcode).toBeUndefined();
+    expect(loadConfig({ ...REQUIRED, AGENT_WEB_DIR: '/app/apps/web/dist' }).webDir).toBe('/app/apps/web/dist');
+    expect(loadConfig({ ...REQUIRED, AGENT_WEB_DIR: '' }).webDir).toBeUndefined();
   });
 });
