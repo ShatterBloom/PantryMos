@@ -5,9 +5,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type RunningServers, startServers } from '../src/app.ts';
-import { createHousehold, type HouseholdFixture, mcpTestConfig } from '../../../test/fixtures.ts';
-import { TEST_ADMIN_URL } from '../../../test/env.ts';
+import { type RunningServers, startServers } from '../../src/app.ts';
+import { createHousehold, type HouseholdFixture, mcpTestConfig } from '../../../../test/fixtures.ts';
+import { TEST_ADMIN_URL } from '../../../../test/env.ts';
 
 describe('MCP tools over Streamable HTTP', () => {
   let servers: RunningServers;

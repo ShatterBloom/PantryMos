@@ -1,7 +1,7 @@
 // Security tests S1–S5 (+ MCP rate limit) — IMPLEMENTATION_PLAN §9.2, §11.
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type RunningServers, startServers } from '../src/app.ts';
+import { type RunningServers, startServers } from '../../src/app.ts';
 import {
   createHousehold,
   type HouseholdFixture,
@@ -10,7 +10,7 @@ import {
   MCP_HEADERS,
   mcpTestConfig,
   TEST_SERVICE_TOKEN,
-} from '../../../test/fixtures.ts';
+} from '../../../../test/fixtures.ts';
 
 const urlOf = (app: RunningServers['mcp']) => {
   const { address, port } = app.server.address() as AddressInfo;

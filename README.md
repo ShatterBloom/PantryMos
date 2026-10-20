@@ -51,8 +51,13 @@ docker compose up --build    # then open http://127.0.0.1:7400/api/health
 ```bash
 pnpm db:up
 pnpm typecheck
-pnpm test        # recreates the `pantrymos_test` database on every run
+pnpm test               # everything; recreates the `pantrymos_test` database on every run
+pnpm test:unit          # pure logic, no database needed
+pnpm test:integration   # real Postgres and real HTTP listeners
+pnpm test:coverage      # all tests plus the coverage gate CI enforces
 ```
+
+Tests live under `test/unit/` and `test/integration/` in each package.
 
 ## Trying the MCP server with MCP Inspector
 

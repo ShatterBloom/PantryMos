@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dateLabel, daysBetween, formatShort } from '../src/domain/dates.ts';
+import { dateLabel, daysBetween, formatShort } from '../../src/domain/dates.ts';
 
 const base = { purchased_at: '2026-10-08', opened_at: null, package_date: null, package_date_type: null } as const;
 

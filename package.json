@@ -9,6 +9,9 @@
   "scripts": {
     "typecheck": "tsc -p test/tsconfig.json && pnpm -r run typecheck",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "db:up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait db",
     "db:bootstrap": "node scripts/db-bootstrap.ts",
@@ -26,6 +29,8 @@
     "@pantrymos/shared": "workspace:*",
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "5.0.3",
+    "fast-check": "^4.10.2",
     "typescript": "^5.9.3",
     "vitest": "^5.0.3"
   }

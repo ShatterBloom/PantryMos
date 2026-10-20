@@ -1,7 +1,7 @@
 // Schema ownership and append-only guarantees enforced by Postgres privileges (§1, I3).
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { TEST_AGENT_DB_URL, TEST_MCP_DB_URL } from '../../../test/env.ts';
+import { TEST_AGENT_DB_URL, TEST_MCP_DB_URL } from '../../../../test/env.ts';
 
 describe('database roles', () => {
   const mcp = new pg.Client({ connectionString: TEST_MCP_DB_URL });
