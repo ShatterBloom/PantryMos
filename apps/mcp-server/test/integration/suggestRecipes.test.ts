@@ -1,4 +1,5 @@
 // suggest_recipes over MCP with the demo recipes (story C1, FR-9, I1).
+import { randomUUID } from 'node:crypto';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
@@ -11,6 +12,7 @@ import {
   mcpTestConfig,
   PASTA_STOCK,
   stockKitchen,
+  withAdmin,
 } from '../../../../test/fixtures.ts';
 
 interface Suggestion {
@@ -79,6 +81,37 @@ describe('suggest_recipes', () => {
       recipe_name: pasta.name,
       servings: 3,
       substitutions: [{ from_item: 'scallion', to_item: 'onion' }],
+    });
+    expect(parseErrorResult(started)).toBeNull();
+  });
+
+  it('judges makeability on the substitutions combined, so a makeable suggestion always starts', async () => {
+    // Scallion and bell pepper can each be replaced 1:1 by onion only.
+    const recipeId = randomUUID();
+    await withAdmin(async (admin) => {
+      await admin.query(`INSERT INTO pantry.recipes (id, household_id, name, servings) VALUES ($1, $2, 'onion hash', 2)`, [
+        recipeId,
+        kitchen.householdId,
+      ]);
+      for (const item of ['scallion', 'bell pepper']) {
+        await admin.query(
+          `INSERT INTO pantry.recipe_ingredients (recipe_id, item_id, quantity, optional, substitutes) VALUES ($1, $2, 2, false, $3)`,
+          [recipeId, kitchen.items[item], JSON.stringify([{ item_id: kitchen.items.onion, ratio: 1 }])],
+        );
+      }
+      await admin.query(`INSERT INTO pantry.recipe_steps (recipe_id, step_no, text) VALUES ($1, 1, 'Fry it all.')`, [recipeId]);
+    });
+    const hash = async () => (await suggest({ must_use_item: 'bell pepper' })).out.recipes.find((r) => r.name === 'onion hash')!;
+
+    await stockKitchen(kitchen, { onion: 3 }); // enough for either substitute, not both
+    expect(await hash()).toMatchObject({ makeable: false, shortfall: [{ item: 'onion', need: 4, have: 3 }] });
+
+    await stockKitchen(kitchen, { onion: 1 });
+    const ready = await hash();
+    expect(ready.makeable).toBe(true);
+    const started = await callWrite(client, 'start_cooking', {
+      recipe_name: 'onion hash',
+      substitutions: ready.substitutions_needed.map((s) => ({ from_item: s.from_item, to_item: s.options[0]!.to_item })),
     });
     expect(parseErrorResult(started)).toBeNull();
   });

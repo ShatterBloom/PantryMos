@@ -4,9 +4,8 @@ import { householdToday, loadCatalog } from '../../db/catalog.ts';
 import { activeBatches } from '../../db/inventory.ts';
 import { loadIngredients, loadRecipes } from '../../db/recipes.ts';
 import { availableByItem, itemInfo } from '../../db/sessions.ts';
-import { analyzeRecipe } from '../../domain/cooking.ts';
 import { findItem } from '../../domain/items.ts';
-import { rankRecipe } from '../../domain/recommend.ts';
+import { rankRecipe, suggestRecipe } from '../../domain/recommend.ts';
 import { listAnd } from '../../domain/speech.ts';
 import type { ToolContext } from '../context.ts';
 import { NameInput } from '../schemas.ts';
@@ -62,25 +61,20 @@ export function registerSuggestRecipes(server: McpServer, ctx: ToolContext): voi
         for (const recipe of await loadRecipes(ctx.pool, householdId)) {
           const ingredients = await loadIngredients(ctx.pool, recipe.id);
           if (mustUse && !ingredients.some((i) => i.item_id === mustUse.id)) continue;
-          const input = { ingredients, recipeServings: recipe.servings, servings: servings ?? recipe.servings, available, items };
-          const analysis = analyzeRecipe({ ...input, substitutions: [] });
-          // A single in-stock option is what start_cooking would be called with; score that plan.
-          const single = analysis.substitutions_needed
-            .filter((s) => s.options.length === 1)
-            .map((s) => ({ from_item_id: s.from_item_id, to_item_id: s.options[0]!.to_item_id }));
-          const planned = single.length > 0 ? analyzeRecipe({ ...input, substitutions: single }) : analysis;
-          const rank = rankRecipe(planned, batches, today);
+          const target = servings ?? recipe.servings;
+          const suggestion = suggestRecipe({ ingredients, recipeServings: recipe.servings, servings: target, available, items });
+          const rank = rankRecipe(suggestion.plan, batches, today);
           ranked.push({
             earliest: rank.earliest,
             out: {
               recipe_id: recipe.id,
               name: recipe.name,
-              servings: input.servings,
-              makeable: analysis.shortfall.length === 0,
+              servings: target,
+              makeable: suggestion.makeable,
               score: rank.score,
               reason: rank.reason,
-              shortfall: analysis.shortfall.map((s) => ({ item: name(s.item_id), need: s.need, have: s.have, unit: items.get(s.item_id)!.base_unit })),
-              substitutions_needed: analysis.substitutions_needed.map((s) => ({
+              shortfall: suggestion.plan.shortfall.map((s) => ({ item: name(s.item_id), need: s.need, have: s.have, unit: items.get(s.item_id)!.base_unit })),
+              substitutions_needed: suggestion.substitutions.map((s) => ({
                 from_item: name(s.from_item_id),
                 options: s.options.map((o) => ({ to_item: name(o.to_item_id), quantity: o.quantity, in_stock: true as const })),
               })),

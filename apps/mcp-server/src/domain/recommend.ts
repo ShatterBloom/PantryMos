@@ -1,7 +1,7 @@
 // Recipe recommendations (IMPLEMENTATION_PLAN §6.3, PRD FR-9): rank by how many priority batches a
 // recipe would use, and explain the ranking with those batches' date labels.
 import { allocateFefo } from './allocation.ts';
-import { type Analysis, demandByItem } from './cooking.ts';
+import { type Analysis, type AnalysisInput, analyzeRecipe, demandByItem } from './cooking.ts';
 import { addDays } from './dates.ts';
 
 /** Batches due within this many days count as priority, besides each item's oldest batch. */
@@ -15,6 +15,29 @@ export interface RankBatch {
   version: number;
   priority_date: string;
   date_label: string;
+}
+
+export interface Suggestion {
+  /** The plan start_cooking gets when passed `substitutions`; score this one. */
+  plan: Analysis;
+  /** Short ingredients and their in-stock options; a single option is what start_cooking is passed. */
+  substitutions: Analysis['substitutions_needed'];
+  makeable: boolean;
+}
+
+/**
+ * What suggest_recipes promises for one recipe: the plan with every single-option substitution
+ * applied, and whether that combined plan fits stock. Options are found one ingredient at a time,
+ * so two substitutions can each fit alone yet compete for the same stock; makeability is judged on
+ * the combined plan, the same check start_cooking makes.
+ */
+export function suggestRecipe(input: Omit<AnalysisInput, 'substitutions'>): Suggestion {
+  const analysis = analyzeRecipe({ ...input, substitutions: [] });
+  const single = analysis.substitutions_needed
+    .filter((s) => s.options.length === 1)
+    .map((s) => ({ from_item_id: s.from_item_id, to_item_id: s.options[0]!.to_item_id }));
+  const plan = single.length > 0 ? analyzeRecipe({ ...input, substitutions: single }) : analysis;
+  return { plan, substitutions: analysis.substitutions_needed, makeable: plan.shortfall.length === 0 };
 }
 
 export interface Ranking {
