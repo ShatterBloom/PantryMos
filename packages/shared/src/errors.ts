@@ -30,6 +30,8 @@ export const ERROR_CODES = [
   'would_go_negative',
   'proposal_conflict',
   'rate_limited',
+  // Agent-local timer tools (§8.6).
+  'ambiguous_timer',
   // Internal confirm/commit outcomes (§4.3).
   'not_found',
   'already_committed',

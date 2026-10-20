@@ -1,0 +1,53 @@
+import { describe, expect, it } from 'vitest';
+import { fromConverseOutput, toConverseInput } from '../../src/model/bedrock.ts';
+
+describe('Bedrock Converse mapping', () => {
+  it('sends the system prompt, messages, tools and a capped, deterministic inference config', () => {
+    const input = toConverseInput(
+      {
+        system: 'be brief',
+        messages: [
+          { role: 'user', content: [{ text: 'hi' }] },
+          { role: 'assistant', content: [{ toolUse: { toolUseId: 't1', name: 'list_inventory', input: {} } }] },
+          { role: 'user', content: [{ toolResult: { toolUseId: 't1', status: 'error', content: [{ json: { code: 'x' } }, { text: 'x' }] } }] },
+        ],
+        tools: [{ name: 'list_inventory', description: 'd', inputSchema: { type: 'object' } }],
+      },
+      { modelId: 'apac.amazon.nova-pro-v1:0', maxTokens: 512 },
+    );
+    expect(input).toEqual({
+      modelId: 'apac.amazon.nova-pro-v1:0',
+      system: [{ text: 'be brief' }],
+      messages: [
+        { role: 'user', content: [{ text: 'hi' }] },
+        { role: 'assistant', content: [{ toolUse: { toolUseId: 't1', name: 'list_inventory', input: {} } }] },
+        { role: 'user', content: [{ toolResult: { toolUseId: 't1', status: 'error', content: [{ json: { code: 'x' } }, { text: 'x' }] } }] },
+      ],
+      inferenceConfig: { maxTokens: 512, temperature: 0 },
+      toolConfig: { tools: [{ toolSpec: { name: 'list_inventory', description: 'd', inputSchema: { json: { type: 'object' } } } }] },
+    });
+    expect(toConverseInput({ system: 's', messages: [], tools: [] }, { modelId: 'm', maxTokens: 64 })).not.toHaveProperty('toolConfig');
+  });
+
+  it('reads text and tool uses back, dropping other blocks', () => {
+    expect(
+      fromConverseOutput({
+        stopReason: 'tool_use',
+        output: {
+          message: {
+            role: 'assistant',
+            content: [
+              { text: 'Let me check.' },
+              { reasoningContent: { reasoningText: { text: 'hmm' } } },
+              { toolUse: { toolUseId: 't9', name: 'expiring_soon', input: undefined } },
+            ],
+          },
+        },
+      }),
+    ).toEqual({
+      stopReason: 'tool_use',
+      content: [{ text: 'Let me check.' }, { toolUse: { toolUseId: 't9', name: 'expiring_soon', input: {} } }],
+    });
+    expect(fromConverseOutput({ stopReason: undefined, output: undefined } as never)).toEqual({ stopReason: 'end_turn', content: [] });
+  });
+});

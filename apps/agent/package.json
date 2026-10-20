@@ -12,6 +12,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1152.0",
+    "@fastify/rate-limit": "^11.2.1",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@pantrymos/shared": "workspace:*",
     "fastify": "^5.12.5",
