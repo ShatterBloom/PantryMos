@@ -1,0 +1,16 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ToolContext } from './context.ts';
+import { registerListInventory } from './tools/listInventory.ts';
+
+export const SERVER_INFO = { name: 'pantrymos', version: '0.1.0' } as const;
+
+/** A fresh MCP server per request (stateless Streamable HTTP), bound to the caller's household. */
+export function buildMcpServer(ctx: ToolContext): McpServer {
+  const server = new McpServer(SERVER_INFO, {
+    instructions:
+      'PantryMos keeps batch-level kitchen inventory. Tools never change inventory directly; ' +
+      'propose_* tools create cards the user must confirm in the app.',
+  });
+  registerListInventory(server, ctx);
+  return server;
+}

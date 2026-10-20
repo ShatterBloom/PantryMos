@@ -1,0 +1,5 @@
+# Dev/CI overlay: expose Postgres on the host's loopback for local tooling and tests.
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"

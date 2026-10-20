@@ -1,0 +1,62 @@
+# Runtime topology (IMPLEMENTATION_PLAN §13.1):
+# `agent` shares `mcp-server`'s network namespace, mirroring the ECS task, so the MCP (7410)
+# and internal (7411) listeners stay on 127.0.0.1 and are reachable only by the agent.
+# Only the agent port (7400) is published, and only to the host's loopback.
+name: pantrymos
+
+x-secrets: &secrets
+  PANTRY_DB_NAME: pantrymos
+  PANTRY_MCP_PASSWORD: ${PANTRY_MCP_PASSWORD:-dev-mcp-password}
+  PANTRY_AGENT_PASSWORD: ${PANTRY_AGENT_PASSWORD:-dev-agent-password}
+  SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
+  AGENT_MCP_TOKEN: ${AGENT_MCP_TOKEN:-dev-agent-mcp-token-change-me}
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build: { context: ., target: migrate }
+    environment:
+      <<: *secrets
+      PG_ADMIN_URL: postgres://postgres:${PG_ADMIN_PASSWORD:-postgres}@db:5432/postgres
+    depends_on:
+      db: { condition: service_healthy }
+
+  mcp-server:
+    build: { context: ., target: mcp-server }
+    environment:
+      <<: *secrets
+      MCP_DATABASE_URL: postgres://pantry_mcp:${PANTRY_MCP_PASSWORD:-dev-mcp-password}@db:5432/pantrymos
+      MCP_BIND_HOST: 127.0.0.1
+      MCP_PORT: 7410
+      INTERNAL_PORT: 7411
+    ports:
+      - "127.0.0.1:7400:7400" # the agent's port, published via the shared namespace
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  agent:
+    build: { context: ., target: agent }
+    network_mode: "service:mcp-server"
+    environment:
+      <<: *secrets
+      AGENT_DATABASE_URL: postgres://pantry_agent:${PANTRY_AGENT_PASSWORD:-dev-agent-password}@db:5432/pantrymos
+      AGENT_BIND_HOST: 0.0.0.0
+      AGENT_PORT: 7400
+      AGENT_MCP_URL: http://127.0.0.1:7410/mcp
+      AGENT_INTERNAL_URL: http://127.0.0.1:7411
+    depends_on:
+      mcp-server: { condition: service_started }
+
+volumes:
+  pgdata:
