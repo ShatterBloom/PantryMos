@@ -31,10 +31,12 @@ export const ERROR_CODES = [
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
+/** Error body shared by MCP tool results and internal routes. Extra keys carry code-specific details. */
 export interface BusinessError {
   code: ErrorCode;
   message: string;
   ask?: string;
   options?: unknown[];
   required?: string[];
+  [detail: string]: unknown;
 }
