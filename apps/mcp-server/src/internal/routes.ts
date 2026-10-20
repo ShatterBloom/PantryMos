@@ -9,8 +9,11 @@ import { RejectBody, rejectProposal } from '../commit/reject.ts';
 import type { Config } from '../config.ts';
 import type { Pool } from '../db/pool.ts';
 import type { Outcome } from '../db/requestLog.ts';
+import { householdExists, inventoryView, ledgerView } from './views.ts';
 
 const ProposalParams = z.object({ id: z.uuid() });
+const HouseholdHeader = z.object({ 'x-household-id': z.uuid() });
+const LedgerQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
 
 export function registerInternalRoutes(app: FastifyInstance, pool: Pool, config: Config): void {
   /** Parses params and body with zod, runs the action, and replies with its stored outcome. */
@@ -53,6 +56,28 @@ export function registerInternalRoutes(app: FastifyInstance, pool: Pool, config:
     const view = params.success ? await proposalView(pool, params.data.id) : null;
     return view ? reply.send(view) : reply.code(404).send(notFound().body);
   });
+
+  /**
+   * §11.3: a view names its household in a header. The service token is trusted with every
+   * household the agent serves (as for proposals, whose household comes from the row).
+   */
+  const view =
+    <Q extends z.ZodType>(Query: Q, read: (householdId: string, query: z.infer<Q>) => Promise<unknown>) =>
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const header = HouseholdHeader.safeParse(request.headers);
+      const query = Query.safeParse(request.query);
+      if (!header.success || !query.success) {
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', issues: [...(header.error?.issues ?? []), ...(query.error?.issues ?? [])] });
+      }
+      const householdId = header.data['x-household-id'];
+      if (!(await householdExists(pool, householdId))) return reply.code(404).send({ error: 'not_found' });
+      return reply.send(await read(householdId, query.data));
+    };
+
+  app.get('/internal/views/inventory', view(z.object({}), (householdId) => inventoryView(pool, householdId)));
+  app.get('/internal/views/ledger', view(LedgerQuery, (householdId, { limit }) => ledgerView(pool, householdId, limit)));
 
   app.post('/internal/proposals/:id/reject', action(RejectBody, (id, body) => rejectProposal(pool, id, body)));
   app.patch('/internal/proposals/:id', action(EditBody, (id, body) => editProposal(pool, id, body)));

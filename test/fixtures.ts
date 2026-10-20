@@ -215,11 +215,16 @@ export async function internalCall(
   path: string,
   body: unknown,
   method: 'GET' | 'POST' | 'PATCH' = 'POST',
+  headers: Record<string, string> = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const { port } = servers.internal.server.address() as AddressInfo;
   const res = await fetch(`http://127.0.0.1:${port}${path}`, {
     method,
-    headers: { 'x-service-token': TEST_SERVICE_TOKEN, ...(method === 'GET' ? {} : { 'content-type': 'application/json' }) },
+    headers: {
+      'x-service-token': TEST_SERVICE_TOKEN,
+      ...(method === 'GET' ? {} : { 'content-type': 'application/json' }),
+      ...headers,
+    },
     ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
   });
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };

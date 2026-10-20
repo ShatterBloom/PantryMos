@@ -68,7 +68,7 @@ export function registerListInventory(server: McpServer, ctx: ToolContext): void
 }
 
 /** Items sorted by name; batches keep FEFO order within each item. */
-function groupByItem(batches: readonly BatchView[]): ItemOut[] {
+export function groupByItem(batches: readonly BatchView[]): ItemOut[] {
   const byItem = new Map<string, ItemOut>();
   for (const b of batches) {
     const entry = byItem.get(b.item_id) ?? { item: b.item, total: 0, unit: b.unit, batches: [] };
