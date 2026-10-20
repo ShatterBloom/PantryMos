@@ -48,10 +48,28 @@ export class InternalClient {
     return res.status === 200 ? (res.body as unknown as ProposalView) : null;
   }
 
-  private async call(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Promise<InternalResponse> {
+  /** The web view's read models (§8.8), for the agent's household. */
+  inventory(householdId: string): Promise<InternalResponse> {
+    return this.call('GET', '/internal/views/inventory', undefined, { 'x-household-id': householdId });
+  }
+
+  ledger(householdId: string, limit: number): Promise<InternalResponse> {
+    return this.call('GET', `/internal/views/ledger?limit=${limit}`, undefined, { 'x-household-id': householdId });
+  }
+
+  private async call(
+    method: 'GET' | 'POST' | 'PATCH',
+    path: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<InternalResponse> {
     const res = await fetch(new URL(path, this.baseUrl), {
       method,
-      headers: { 'x-service-token': this.serviceToken, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      headers: {
+        'x-service-token': this.serviceToken,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...headers,
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const text = await res.text();

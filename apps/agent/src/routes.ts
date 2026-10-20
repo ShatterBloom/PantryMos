@@ -1,4 +1,4 @@
-// User-action routes (IMPLEMENTATION_PLAN §8.8): chat, voice-window acks, card actions and message polling.
+// User-action routes (IMPLEMENTATION_PLAN §8.8): chat, voice-window acks, card actions, message polling and the web view.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AgentConfig } from './config.ts';
@@ -10,6 +10,7 @@ import { insertEvent } from './store/events.ts';
 import { LeaseBusyError, type LeaseTiming, withLease } from './store/lease.ts';
 import { insertOutbound, listOutbound, outboundById } from './store/outbound.ts';
 import { abandonRequest, claimRequest, completeRequest, finishedResponse, type RequestKey } from './store/requestLog.ts';
+import { activeTimers } from './store/timers.ts';
 import { closeOpenWindows, openWindow, WINDOW_MS } from './store/windows.ts';
 import { runTurn, type TurnDeps } from './turn/runTurn.ts';
 
@@ -30,6 +31,8 @@ const ChatBody = z.object({
 });
 const AckBody = z.object({ conversation_id: z.uuid(), message_id: z.number().int().positive(), request_id: z.uuid() });
 const MessagesQuery = z.object({ conversation_id: z.uuid(), after: z.coerce.number().int().min(0).default(0) });
+const ConversationQuery = z.object({ conversation_id: z.uuid() });
+const LedgerQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
 const ProposalParams = z.object({ id: z.uuid() });
 const CardBody = z.object({ version: z.number().int().min(1), request_id: z.uuid() });
 const EditBody = z.object({ base_version: z.number().int().min(1), changes: z.unknown(), request_id: z.uuid() });
@@ -114,6 +117,34 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     if (!(await conversationExists(pool, conversation_id, config.householdId))) return reply.code(404).send({ error: 'not_found' });
     const messages = await listOutbound(pool, conversation_id, after);
     return reply.send({ messages: messages.map((m) => ({ ...m, created_at: m.created_at.toISOString() })) });
+  });
+
+  // The web view (§8.8): stock, the ledger, running timers and a card's current state.
+  app.get('/api/inventory', async (_request, reply) => {
+    const res = await internal.inventory(config.householdId);
+    return reply.code(res.status).send(res.body);
+  });
+
+  app.get('/api/ledger', async (request, reply) => {
+    const parsed = LedgerQuery.safeParse(request.query);
+    if (!parsed.success) return badRequest(reply, parsed.error.issues);
+    const res = await internal.ledger(config.householdId, parsed.data.limit);
+    return reply.code(res.status).send(res.body);
+  });
+
+  app.get('/api/timers', async (request, reply) => {
+    const parsed = ConversationQuery.safeParse(request.query);
+    if (!parsed.success) return badRequest(reply, parsed.error.issues);
+    if (!(await conversationExists(pool, parsed.data.conversation_id, config.householdId))) return reply.code(404).send({ error: 'not_found' });
+    return reply.send({ timers: await activeTimers(pool, parsed.data.conversation_id) });
+  });
+
+  app.get('/api/proposals/:id', async (request, reply) => {
+    const params = ProposalParams.safeParse(request.params);
+    if (!params.success) return badRequest(reply, params.error.issues);
+    const view = await internal.view(params.data.id);
+    if (!view || !(await conversationExists(pool, view.conversation_id, config.householdId))) return reply.code(404).send({ error: 'not_found' });
+    return reply.send(view);
   });
 
   /** Card actions act on proposals of this household's conversations only, found from the card itself. */
