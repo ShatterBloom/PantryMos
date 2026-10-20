@@ -41,8 +41,8 @@ export const NEW_BATCH = 'new';
 /**
  * Decides which batches change (§6.2): a named batch; for found stock the only active batch, or a
  * new batch when there is none (several → `ambiguous_batch`, with a new-batch option); for a
- * deduction FEFO across batches; `set_quantity` needs one batch. Taking more than the stock is
- * `would_go_negative`.
+ * deduction FEFO across batches; `set_quantity` needs one batch, and with `batch_id: "new"` is the
+ * new batch's quantity. Taking more than the stock is `would_go_negative`.
  */
 export function planAdjustment(request: AdjustRequest, ctx: AdjustContext): AdjustPlan {
   const { item } = ctx;
@@ -55,6 +55,12 @@ export function planAdjustment(request: AdjustRequest, ctx: AdjustContext): Adju
 
   if (request.set_quantity !== undefined) {
     const target = roundQuantity(request.set_quantity);
+    // Rounding must not turn a tiny count into "there is none" and empty the batch.
+    if (target === 0 && request.set_quantity > 0) throw new PantryError('invalid_quantity', 'The count is too small to record.');
+    if (request.batch_id === NEW_BATCH) {
+      if (target === 0) throw new PantryError('invalid_quantity', 'A new batch needs some stock in it.');
+      return checkReason(request.reason, target, { kind: 'new_batch', subject: `adjust:newbatch:${item.id}`, quantity: target });
+    }
     const batch = ctx.named ?? singleBatch(ctx, false);
     if (!batch) {
       if (target === 0) throw new PantryError('invalid_quantity', `There is no ${item.name} in stock already.`);

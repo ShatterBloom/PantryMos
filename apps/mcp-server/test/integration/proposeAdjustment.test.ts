@@ -127,6 +127,15 @@ describe('propose_adjustment', () => {
     expect(await ledgerMismatches(kitchen.householdId)).toEqual([]);
   });
 
+  it('counts stock for batch "new" into a new batch, leaving the existing ones alone', async () => {
+    const p = await ok({ item: 'egg', batch_id: 'new', set_quantity: 2 });
+    expect(p.card.lines).toEqual(['+2 eggs · new batch, bought today, no package date']);
+    expect((await confirmCard(servers, p, 1)).status).toBe(200);
+    expect(await batch(eggOld)).toMatchObject({ quantity: 4, version: 1 });
+    expect(await batch(eggNew)).toMatchObject({ quantity: 12, version: 1 });
+    expect(await events('adjust')).toEqual([{ batch_id: expect.not.stringMatching(new RegExp(`${eggOld}|${eggNew}`)), delta: 2 }]);
+  });
+
   it('keeps adjustments on different batches pending side by side (R23)', async () => {
     const a = await ok({ batch_id: eggOld, delta: -1 });
     const b = await ok({ batch_id: eggNew, delta: -1 });

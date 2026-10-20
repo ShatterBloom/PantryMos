@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type AdjustBatch, type AdjustContext, type AdjustRequest, planAdjustment } from '../../src/domain/adjustment.ts';
+import { type AdjustBatch, type AdjustContext, type AdjustRequest, NEW_BATCH, planAdjustment } from '../../src/domain/adjustment.ts';
 import type { PantryError } from '../../src/domain/errors.ts';
 
 const egg = { id: 'egg', name: 'egg', base_unit: 'count' as const };
@@ -112,6 +112,21 @@ describe('planAdjustment (§6.2)', () => {
     it('records a count for an item with no stock as a new batch', () => {
       expect(plan({ set_quantity: 2 }, ctx([]))).toEqual({ kind: 'new_batch', subject: 'adjust:newbatch:egg', quantity: 2 });
       expect(error(() => plan({ set_quantity: 0 }, ctx([]))).code).toBe('invalid_quantity');
+    });
+
+    it('refuses a positive count that rounds to nothing instead of emptying the batch', () => {
+      const err = error(() => plan({ set_quantity: 0.0001 }, ctx([A])));
+      expect(err).toMatchObject({ code: 'invalid_quantity', message: 'The count is too small to record.' });
+    });
+
+    it('puts a count for batch "new" in a new batch, leaving the existing ones alone', () => {
+      expect(plan({ set_quantity: 2, batch_id: NEW_BATCH }, ctx([A]))).toEqual({
+        kind: 'new_batch',
+        subject: 'adjust:newbatch:egg',
+        quantity: 2,
+      });
+      expect(error(() => plan({ set_quantity: 0, batch_id: NEW_BATCH }, ctx([A]))).code).toBe('invalid_quantity');
+      expect(error(() => plan({ set_quantity: 2, batch_id: NEW_BATCH, reason: 'discard' }, ctx([A]))).code).toBe('invalid_quantity');
     });
 
     it('says when the count already matches', () => {
