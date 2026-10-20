@@ -1,6 +1,7 @@
 // Proposal storage: the subject-key upsert rule and append-only version history (IMPLEMENTATION_PLAN §4.1).
 import { randomUUID } from 'node:crypto';
 import { canonicalJson } from '@pantrymos/shared';
+import { type Editable, editableOf } from '../domain/editable.ts';
 import { PantryError } from '../domain/errors.ts';
 import type { Queryable } from './catalog.ts';
 import type { Tx } from './tx.ts';
@@ -167,18 +168,24 @@ export interface ProposalView {
   version: number;
   conversation_id: string;
   card: unknown;
+  /** What the app may edit, and how to send it back (§4.4). */
+  editable: Editable;
   expires_at: string;
 }
 
 /** The current version of a proposal, as the card shows it (no lock). */
 export async function proposalView(q: Queryable, proposalId: string): Promise<ProposalView | null> {
-  const { rows } = await q.query<Omit<ProposalView, 'expires_at'> & { expires_at: Date }>(
+  const { rows } = await q.query<
+    Omit<ProposalView, 'expires_at' | 'editable'> & { expires_at: Date; input: unknown; payload: unknown }
+  >(
     `SELECT id AS proposal_id, kind,
             CASE WHEN status = 'pending' AND expires_at <= now() THEN 'expired' ELSE status END AS status,
-            version, conversation_id, payload -> 'card' AS card, expires_at
+            version, conversation_id, payload -> 'card' AS card, input, payload, expires_at
        FROM pantry.proposals WHERE id = $1`,
     [proposalId],
   );
   const row = rows[0];
-  return row ? { ...row, expires_at: iso(row.expires_at) } : null;
+  if (!row) return null;
+  const { input, payload, ...view } = row;
+  return { ...view, editable: editableOf(row.kind, input, payload), expires_at: iso(row.expires_at) };
 }

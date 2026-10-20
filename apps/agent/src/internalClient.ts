@@ -12,6 +12,8 @@ export interface ProposalView {
   version: number;
   conversation_id: string;
   card: { title: string; lines: string[]; warnings: string[]; readback_text: string };
+  /** What the app may edit (mcp-server domain/editable.ts); passed through to the web. */
+  editable: unknown;
   expires_at: string;
 }
 
