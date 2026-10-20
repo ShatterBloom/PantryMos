@@ -5,6 +5,7 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { META_CONVERSATION_ID, META_REQUEST_ID } from '@pantrymos/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
+import { addDays } from '../../src/domain/dates.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
   connectMcpClient,
@@ -100,9 +101,11 @@ describe('confirm intake', () => {
   };
 
   it('commits an intake: batches with +Q purchase events, one operation, one confirmation (R18, B1)', async () => {
+    const today = await todayIn('America/Los_Angeles');
+    const bestBy = addDays(today, 30); // relative, so the test never drifts out of the ±730-day window
     const p = await proposeOk([
       { name: 'eggs', quantity: 12 },
-      { name: 'milk', quantity: 1, unit: 'l', package_date: '2027-01-10', package_date_type: 'best_by' },
+      { name: 'milk', quantity: 1, unit: 'l', package_date: bestBy, package_date_type: 'best_by' },
     ]);
     const res = await confirm(p.proposal_id, confirmBody(1));
 
@@ -123,7 +126,6 @@ describe('confirm intake', () => {
       },
     });
 
-    const today = await todayIn('America/Los_Angeles');
     const batches = await db(
       `SELECT b.item_id, b.quantity::int, b.purchased_at::text, b.package_date::text, b.package_date_type, b.priority_source,
               b.status, b.version, b.created_by_op,
@@ -140,7 +142,7 @@ describe('confirm intake', () => {
         events: [{ delta: 12, reason: 'purchase', op }],
       },
       expect.objectContaining({
-        quantity: 1000, package_date: '2027-01-10', package_date_type: 'best_by', priority_source: 'package',
+        quantity: 1000, package_date: bestBy, package_date_type: 'best_by', priority_source: 'package',
         status: 'active', version: 1, events: [{ delta: 1000, reason: 'purchase', op }],
       }),
     ]);
