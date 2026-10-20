@@ -4,6 +4,7 @@ import { registerCancelCooking } from './tools/cancelCooking.ts';
 import { registerExpiringSoon } from './tools/expiringSoon.ts';
 import { registerGetSession } from './tools/getSession.ts';
 import { registerListInventory } from './tools/listInventory.ts';
+import { registerListRecentOperations } from './tools/listRecentOperations.ts';
 import { registerNextStep } from './tools/nextStep.ts';
 import { registerProposeConsumption } from './tools/proposeConsumption.ts';
 import { registerProposeIntake } from './tools/proposeIntake.ts';
@@ -32,5 +33,6 @@ export function buildMcpServer(ctx: ToolContext): McpServer {
   registerSkipIngredient(server, ctx);
   registerCancelCooking(server, ctx);
   registerProposeConsumption(server, ctx);
+  registerListRecentOperations(server, ctx);
   return server;
 }
