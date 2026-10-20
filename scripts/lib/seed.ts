@@ -2,6 +2,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { CATALOG } from '../../db/seed/catalog.ts';
+import { RECIPES } from '../../db/seed/recipes.ts';
 
 export const INSPECTOR_CLIENT_NAME = 'inspector-dev';
 
@@ -16,6 +17,7 @@ export interface SeedOptions {
 
 export interface SeedResult {
   itemsCreated: number;
+  recipesCreated: number;
   /** Raw Inspector token, returned only when it was just created. It is not stored anywhere. */
   inspectorToken: string | null;
 }
@@ -49,6 +51,8 @@ export async function seedDemo(client: pg.ClientBase, options: SeedOptions): Pro
       itemsCreated += res.rowCount ?? 0;
     }
 
+    const recipesCreated = await seedRecipes(client, options.householdId);
+
     let inspectorToken: string | null = null;
     if (options.inspector) {
       const existing = await client.query(
@@ -67,9 +71,48 @@ export async function seedDemo(client: pg.ClientBase, options: SeedOptions): Pro
     }
 
     await client.query('COMMIT');
-    return { itemsCreated, inspectorToken };
+    return { itemsCreated, recipesCreated, inspectorToken };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   }
+}
+
+/** Inserts each recipe with its ingredients and steps, once; existing recipes are left untouched. */
+async function seedRecipes(client: pg.ClientBase, householdId: string): Promise<number> {
+  const { rows } = await client.query<{ id: string; name: string }>(
+    `SELECT id, name FROM pantry.items WHERE household_id = $1`,
+    [householdId],
+  );
+  const itemId = (name: string) => {
+    const id = rows.find((r) => r.name === name)?.id;
+    if (!id) throw new Error(`Recipe seed references unknown item "${name}"`);
+    return id;
+  };
+
+  let created = 0;
+  for (const recipe of RECIPES) {
+    const recipeId = randomUUID();
+    const res = await client.query(
+      `INSERT INTO pantry.recipes (id, household_id, name, aliases, servings) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (household_id, lower(name)) DO NOTHING`,
+      [recipeId, householdId, recipe.name, recipe.aliases ?? [], recipe.servings],
+    );
+    if (res.rowCount === 0) continue;
+    created += 1;
+    for (const ing of recipe.ingredients) {
+      const substitutes = (ing.substitutes ?? []).map((s) => ({ item_id: itemId(s.item), ratio: s.ratio }));
+      await client.query(
+        `INSERT INTO pantry.recipe_ingredients (recipe_id, item_id, quantity, optional, substitutes) VALUES ($1, $2, $3, $4, $5)`,
+        [recipeId, itemId(ing.item), ing.quantity, ing.optional ?? false, JSON.stringify(substitutes)],
+      );
+    }
+    for (const [index, step] of recipe.steps.entries()) {
+      await client.query(
+        `INSERT INTO pantry.recipe_steps (recipe_id, step_no, text, timer_seconds, timer_label) VALUES ($1, $2, $3, $4, $5)`,
+        [recipeId, index + 1, step.text, step.timer_seconds ?? null, step.timer_label ?? null],
+      );
+    }
+  }
+  return created;
 }

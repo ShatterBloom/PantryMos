@@ -22,7 +22,9 @@ try {
     agent: { clientId: AGENT_CLIENT_ID, token: agentToken },
     inspector: true,
   });
-  console.log(`seed: demo household ready (${result.itemsCreated} new catalog items)`);
+  console.log(
+    `seed: demo household ready (${result.itemsCreated} new catalog items, ${result.recipesCreated} new recipes)`,
+  );
   if (result.inspectorToken) {
     // Printed once; only its hash is stored. Revoke the row in pantry.api_clients to get a new one.
     console.log(`seed: MCP Inspector token (shown once): ${result.inspectorToken}`);
