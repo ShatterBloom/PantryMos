@@ -275,6 +275,27 @@ describe('planIntake: new items (B2, R21)', () => {
     expect(preconditions.catalog.absent_items).toEqual(['oat milk']);
   });
 
+  it('stores a new item under its singular name, so it is never pluralized twice', () => {
+    const { payload, preconditions } = plan([
+      { name: 'Apples', quantity: 6, new_item: { category: 'produce', base_unit: 'count' } },
+    ]);
+    expect(payload.new_items).toEqual([
+      { key: 'apple', name: 'apple', category: 'produce', base_unit: 'count', default_shelf_days: null },
+    ]);
+    expect(payload.lines[0]).toMatchObject({ item: 'apple', new_item: 'apple' });
+    expect(payload.card.lines[0]).toBe('6 apples · bought today, no package date');
+    expect(payload.card.warnings).toEqual(['New item: apple · produce · count']);
+    expect(payload.card.readback_text).toBe("I'll add 6 apples. New item: apple. Say confirm, or tell me what to change.");
+    expect(preconditions.catalog.absent_items).toEqual(['apple']);
+    // The singular and plural spellings plan the same new item.
+    const singularPlan = plan([{ name: 'apple', quantity: 6, new_item: { category: 'produce', base_unit: 'count' } }]);
+    expect(singularPlan.preconditions).toEqual(preconditions);
+  });
+
+  it('still asks about an unknown item in the words the user used', () => {
+    expect(failure([{ name: 'Apples', quantity: 6 }]).message).toBe('There is no apples in the catalog yet.');
+  });
+
   it('lets later lines refer to a new item defined earlier, in any form', () => {
     const { payload } = plan([
       { name: 'blueberry', quantity: 125, unit: 'g', new_item: { category: 'produce', base_unit: 'g' } },

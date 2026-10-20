@@ -304,6 +304,21 @@ describe('confirm intake', () => {
     await assertLedgerConsistent();
   });
 
+  it('treats singular and plural spellings of a new item as the same item under concurrency', async () => {
+    const newItem = { category: 'produce', base_unit: 'count' };
+    const a = await proposeOk([{ name: 'Apple', quantity: 3, new_item: newItem }]);
+    const b = await proposeOk([{ name: 'apples', quantity: 6, new_item: newItem }]);
+
+    const results = await Promise.all([confirm(a.proposal_id, confirmBody(1)), confirm(b.proposal_id, confirmBody(1))]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(results.find((r) => r.status === 409)?.body).toMatchObject({ code: 'stale_state', reason: 'catalog_changed' });
+    const items = await db(
+      `SELECT name FROM pantry.items WHERE household_id = $1 AND name IN ('apple', 'apples')`,
+      [hh.householdId],
+    );
+    expect(items).toEqual([{ name: 'apple' }]);
+  });
+
   it('serializes concurrent learning of the same conversion', async () => {
     const milk = { name: 'milk', quantity: 1, unit: 'jug' };
     const a = await proposeOk([{ ...milk, unit_conversion: { unit: 'jug', base_qty: 2000 } }]);

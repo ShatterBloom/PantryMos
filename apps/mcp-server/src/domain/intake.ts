@@ -3,7 +3,14 @@
 import type { ErrorCode } from '@pantrymos/shared';
 import { dateLabel, formatShort, type PackageDateType, validateBatchDates } from './dates.ts';
 import { PantryError } from './errors.ts';
-import { ambiguousItemError, type BaseUnit, type CatalogItem, type Category, resolveItem } from './items.ts';
+import {
+  ambiguousItemError,
+  type BaseUnit,
+  canonicalItemName,
+  type CatalogItem,
+  type Category,
+  resolveItem,
+} from './items.ts';
 import { priorityOf } from './priority.ts';
 import { formatNumber, listAnd, listOr, speakQuantity } from './speech.ts';
 import { normalizeName, plural } from './text.ts';
@@ -250,17 +257,18 @@ function resolveTarget(
   const proposed = resolveItem(input.name, [...newItems.values()].map(asCatalogItem));
   if (proposed.kind === 'found') return { kind: 'new', item: newItems.get(proposed.item.id)! };
 
-  const name = normalizeName(input.name);
   if (!input.new_item) {
+    const spoken = normalizeName(input.name);
     const guess = known.suggestions.length > 0 ? `Did you mean ${listOr(known.suggestions)}? If not, ` : '';
     throw ask(
       'unknown_item',
-      `There is no ${name} in the catalog yet.`,
-      `${guess}${guess ? 'what' : 'What'} kind of food is ${name}, and is it counted, weighed in grams, or measured in milliliters?`,
+      `There is no ${spoken} in the catalog yet.`,
+      `${guess}${guess ? 'what' : 'What'} kind of food is ${spoken}, and is it counted, weighed in grams, or measured in milliliters?`,
       [`${path}.new_item.category`, `${path}.new_item.base_unit`],
       { suggestions: known.suggestions },
     );
   }
+  const name = canonicalItemName(input.name);
   const item: NewItem = {
     key: name,
     name,

@@ -17,6 +17,14 @@ export interface CatalogItem {
   default_shelf_days: number | null;
 }
 
+/**
+ * The catalog name for a new item: normalized and singular ("Apples" → "apple"), the same form
+ * resolveItem compares on, so "apple" and "apples" are one item, one lock key and one absence check.
+ */
+export function canonicalItemName(raw: string): string {
+  return singular(normalizeName(raw));
+}
+
 export type Resolution =
   | { kind: 'found'; item: CatalogItem }
   | { kind: 'ambiguous'; options: CatalogItem[] }

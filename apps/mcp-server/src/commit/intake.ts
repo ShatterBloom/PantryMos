@@ -1,9 +1,11 @@
 // Committing an intake card: new catalog items and conversions, then one batch per line with its
 // +quantity purchase event (IMPLEMENTATION_PLAN §4.3 step 6).
 import { randomUUID } from 'node:crypto';
+import { loadCatalog } from '../db/catalog.ts';
 import { applyDelta, lockKeys } from '../db/ledger.ts';
 import type { Tx } from '../db/tx.ts';
 import type { IntakePayload, IntakePreconditions, ItemRef } from '../domain/intake.ts';
+import { resolveItem } from '../domain/items.ts';
 import type { Executor, LockedProposal } from './types.ts';
 
 const payloadOf = (p: LockedProposal) => p.payload as IntakePayload;
@@ -22,11 +24,10 @@ export const intakeExecutor: Executor = {
     ]);
 
     if (absent_items.length > 0) {
-      const taken = await tx.query(
-        `SELECT 1 FROM pantry.items WHERE household_id = $1 AND lower(name) = ANY ($2::text[]) LIMIT 1`,
-        [proposal.household_id, absent_items],
-      );
-      if (taken.rowCount !== 0) return 'catalog_changed';
+      // Re-resolve with the same rules as propose time: a synonym added meanwhile ("apples" for
+      // "apple", or an alias) also makes the card stale, not only an identical name.
+      const catalog = await loadCatalog(tx, proposal.household_id);
+      if (absent_items.some((name) => resolveItem(name, catalog).kind !== 'unknown')) return 'catalog_changed';
     }
     const existing = absent_conversions.filter((c) => c.item_id !== null);
     if (existing.length > 0) {

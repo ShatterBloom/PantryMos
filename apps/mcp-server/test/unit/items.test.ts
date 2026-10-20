@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CatalogItem, resolveItem } from '../../src/domain/items.ts';
+import { canonicalItemName, type CatalogItem, resolveItem } from '../../src/domain/items.ts';
 
 const item = (name: string, aliases: string[] = [], id = name): CatalogItem => ({
   id,
@@ -72,5 +72,14 @@ describe('resolveItem (§6.1)', () => {
 
   it('returns unknown on an empty catalog', () => {
     expect(resolveItem('egg', [])).toEqual({ kind: 'unknown', suggestions: [] });
+  });
+});
+
+describe('canonicalItemName', () => {
+  it('normalizes and singularizes the last word, matching what resolveItem compares', () => {
+    expect(canonicalItemName('  Apples ')).toBe('apple');
+    expect(canonicalItemName('Frozen  Peas')).toBe('frozen pea');
+    expect(canonicalItemName('Oat Milk')).toBe('oat milk');
+    expect(canonicalItemName('hummus')).toBe('hummus');
   });
 });
