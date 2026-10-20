@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ToolContext } from './context.ts';
+import { registerExpiringSoon } from './tools/expiringSoon.ts';
 import { registerListInventory } from './tools/listInventory.ts';
 
 export const SERVER_INFO = { name: 'pantrymos', version: '0.1.0' } as const;
@@ -12,5 +13,6 @@ export function buildMcpServer(ctx: ToolContext): McpServer {
       'propose_* tools create cards the user must confirm in the app.',
   });
   registerListInventory(server, ctx);
+  registerExpiringSoon(server, ctx);
   return server;
 }
