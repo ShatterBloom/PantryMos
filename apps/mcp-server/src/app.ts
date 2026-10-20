@@ -5,6 +5,7 @@ import type { Config } from './config.ts';
 import { createPool, type Pool } from './db/pool.ts';
 import { registerInternalRoutes } from './internal/routes.ts';
 import { buildMcpServer } from './mcp/server.ts';
+import { FixedWindowLimiter } from './security/rateLimit.ts';
 import {
   type AuthContext,
   bearerToken,
@@ -28,6 +29,7 @@ const loggerOptions = (enabled: boolean) =>
  */
 export async function buildMcpApp(config: Config, pool: Pool, log = true): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: config.bodyLimitBytes, logger: loggerOptions(log) });
+  const proposeLimiter = new FixedWindowLimiter(config.proposeRatePerMinute, 60_000);
 
   app.addHook('onRequest', async (request, reply) => {
     if (!originAllowed(request.headers.origin, config.allowedOrigins)) {
@@ -51,7 +53,7 @@ export async function buildMcpApp(config: Config, pool: Pool, log = true): Promi
 
   app.post('/mcp', { onRequest: authenticate }, async (request, reply) => {
     const auth = request.auth as AuthContext;
-    const server = buildMcpServer({ pool, auth, config });
+    const server = buildMcpServer({ pool, auth, config, proposeLimiter });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless
       enableJsonResponse: true,

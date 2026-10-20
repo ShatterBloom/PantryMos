@@ -20,6 +20,7 @@ describe('mcp-server loadConfig', () => {
       mcpRatePerMinute: 120,
       internalRatePerMinute: 300,
       confirmRatePerMinute: 30,
+      proposeRatePerMinute: 30,
     });
   });
 

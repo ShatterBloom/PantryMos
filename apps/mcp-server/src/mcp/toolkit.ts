@@ -103,14 +103,26 @@ export async function runReadTool(fn: () => Promise<ToolSuccess>): Promise<CallT
 }
 
 /**
- * Write tools: resolves request metadata, then runs `effect` once per request_id inside the
- * request-log transaction. A retry returns the stored result, success or business error.
+ * Write tools: applies the propose_* rate limit (§11.5), resolves request metadata, then runs
+ * `effect` once per request_id inside the request-log transaction. A retry returns the stored
+ * result, success or business error.
  */
 export async function runWriteTool(
   ctx: ToolContext,
   call: { name: string; args: unknown; meta: Record<string, unknown> | undefined; needsConversation: boolean },
   effect: (tx: Tx, meta: RequestMeta) => Promise<ToolSuccess>,
 ): Promise<CallToolResult> {
+  if (call.name.startsWith('propose_')) {
+    const hit = ctx.proposeLimiter.hit(ctx.auth.clientId);
+    if (!hit.allowed) {
+      return errorResult(
+        new PantryError('rate_limited', 'Too many cards were requested in the last minute.', {
+          retry_after: hit.retryAfter,
+        }).toBody(),
+      );
+    }
+  }
+
   let meta: RequestMeta;
   try {
     meta = readRequestMeta(call.meta, {

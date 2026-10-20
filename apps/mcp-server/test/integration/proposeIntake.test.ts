@@ -1,7 +1,7 @@
 // propose_intake over MCP: proposals, idempotency (R9, R11), clarification (R22 first half), errors (R25).
 import { randomUUID } from 'node:crypto';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { META_CONVERSATION_ID, META_REQUEST_ID } from '@pantrymos/shared';
+import { META_CONVERSATION_ID, META_REQUEST_ID, sha256Hex } from '@pantrymos/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
 import { INSPECTOR_CONVERSATION_ID, parseErrorResult } from '../../src/mcp/toolkit.ts';
@@ -212,6 +212,51 @@ describe('propose_intake with ALLOW_ANON_WRITES (dev only)', () => {
         admin.query(`SELECT conversation_id FROM pantry.proposals WHERE id = $1`, [proposal_id]),
       );
       expect(row.rows[0].conversation_id).toBe(INSPECTOR_CONVERSATION_ID);
+    } finally {
+      await client.close();
+      await servers.close();
+    }
+  });
+});
+
+describe('propose_* rate limit (§11.5)', () => {
+  it('limits card proposals per client token, leaving other tools and clients alone', async () => {
+    const hh = await createHousehold();
+    await createItem(hh.householdId, { name: 'egg' });
+    const servers = await startServers(mcpTestConfig({ proposeRatePerMinute: 2 }), { log: false });
+    const client = await connectMcpClient(servers, hh.token);
+    try {
+      const propose = () =>
+        client.callTool({
+          name: 'propose_intake',
+          arguments: { items: [{ name: 'egg', quantity: 1 }] },
+          _meta: { [META_REQUEST_ID]: randomUUID(), [META_CONVERSATION_ID]: randomUUID() },
+        });
+      expect(parseErrorResult(await propose())).toBeNull();
+      expect(parseErrorResult(await propose())).toBeNull();
+      const limited = parseErrorResult(await propose());
+      expect(limited).toMatchObject({ code: 'rate_limited' });
+      expect(limited?.retry_after).toBeGreaterThan(0);
+      // Reads are not proposals.
+      expect(parseErrorResult(await client.callTool({ name: 'list_inventory', arguments: {} }))).toBeNull();
+
+      // Another client token has its own allowance.
+      const otherToken = await withAdmin(async (admin) => {
+        const token = randomUUID().replaceAll('-', '');
+        await admin.query(
+          `INSERT INTO pantry.api_clients (id, household_id, name, token_hash) VALUES ($1, $2, 'second', $3)`,
+          [randomUUID(), hh.householdId, sha256Hex(token)],
+        );
+        return token;
+      });
+      const other = await connectMcpClient(servers, otherToken);
+      const res = await other.callTool({
+        name: 'propose_intake',
+        arguments: { items: [{ name: 'egg', quantity: 1 }] },
+        _meta: { [META_REQUEST_ID]: randomUUID(), [META_CONVERSATION_ID]: randomUUID() },
+      });
+      expect(parseErrorResult(res)).toBeNull();
+      await other.close();
     } finally {
       await client.close();
       await servers.close();

@@ -24,6 +24,7 @@ const ConfigSchema = z.object({
   mcpRatePerMinute: z.coerce.number().int().positive().default(120),
   internalRatePerMinute: z.coerce.number().int().positive().default(300),
   confirmRatePerMinute: z.coerce.number().int().positive().default(30),
+  proposeRatePerMinute: z.coerce.number().int().positive().default(30),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -41,5 +42,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mcpRatePerMinute: env.MCP_RATE_PER_MINUTE,
     internalRatePerMinute: env.INTERNAL_RATE_PER_MINUTE,
     confirmRatePerMinute: env.CONFIRM_RATE_PER_MINUTE,
+    proposeRatePerMinute: env.PROPOSE_RATE_PER_MINUTE,
   });
 }

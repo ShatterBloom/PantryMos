@@ -342,6 +342,7 @@ export function mcpTestConfig(overrides: Partial<Config> = {}): Config {
     mcpRatePerMinute: 1000,
     internalRatePerMinute: 1000,
     confirmRatePerMinute: 1000,
+    proposeRatePerMinute: 1000,
     ...overrides,
   };
 }

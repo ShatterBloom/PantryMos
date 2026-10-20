@@ -28,6 +28,7 @@ export const ERROR_CODES = [
   'not_undoable',
   'would_go_negative',
   'proposal_conflict',
+  'rate_limited',
   // Internal confirm/commit outcomes (§4.3).
   'not_found',
   'already_committed',

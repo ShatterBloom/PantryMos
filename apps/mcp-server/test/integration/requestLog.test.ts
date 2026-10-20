@@ -9,6 +9,7 @@ import type { Tx } from '../../src/db/tx.ts';
 import { PantryError } from '../../src/domain/errors.ts';
 import type { ToolContext } from '../../src/mcp/context.ts';
 import { parseErrorResult, runWriteTool } from '../../src/mcp/toolkit.ts';
+import { FixedWindowLimiter } from '../../src/security/rateLimit.ts';
 import { createHousehold, mcpTestConfig } from '../../../../test/fixtures.ts';
 import { TEST_MCP_DB_URL } from '../../../../test/env.ts';
 
@@ -160,7 +161,12 @@ describe('runWriteTool', () => {
   beforeAll(async () => {
     pool = createPool(TEST_MCP_DB_URL);
     const { householdId } = await createHousehold();
-    ctx = { pool, auth: { clientId: randomUUID(), householdId }, config: mcpTestConfig() };
+    ctx = {
+      pool,
+      auth: { clientId: randomUUID(), householdId },
+      config: mcpTestConfig(),
+      proposeLimiter: new FixedWindowLimiter(1000, 60_000),
+    };
   });
   afterAll(async () => pool.end());
 
