@@ -56,8 +56,38 @@ export async function claimEvents(
       RETURNING id, conversation_id, kind, payload, created_at, delivered_at IS NOT NULL AS delivered, turn_attempts`,
     [timing.claimMs, timing.proactiveGapMs, timing.maxAttempts, skipConversations, householdId],
   );
-  return rows.sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || a.id.localeCompare(b.id));
+  return byAge(rows);
 }
+
+/**
+ * Events whose last attempt was claimed but never finished, e.g. the process died mid-turn: at the
+ * cap, so never claimed for a turn again, and their claim ran out. Claimed (without counting an
+ * attempt) so that one worker gives them up with the templated fallback.
+ */
+export async function claimExhausted(
+  pool: Pool,
+  householdId: string,
+  timing: WorkerTiming,
+  skipConversations: readonly string[],
+): Promise<ClaimedEvent[]> {
+  const { rows } = await pool.query<ClaimedEvent>(
+    `UPDATE agent.app_events
+        SET turn_claimed_until = now() + make_interval(secs => $1::float / 1000)
+      WHERE id IN (
+            SELECT e.id FROM agent.app_events e
+              JOIN agent.conversations c ON c.id = e.conversation_id AND c.household_id = $4
+             WHERE e.triggers_turn AND e.turn_done_at IS NULL AND NOT e.turn_failed
+               AND (e.turn_claimed_until IS NULL OR e.turn_claimed_until < now())
+               AND e.turn_attempts >= $2
+               AND e.conversation_id <> ALL ($3::uuid[])
+             ORDER BY e.created_at FOR UPDATE OF e SKIP LOCKED LIMIT 10)
+      RETURNING id, conversation_id, kind, payload, created_at, delivered_at IS NOT NULL AS delivered, turn_attempts`,
+    [timing.claimMs, timing.maxAttempts, skipConversations, householdId],
+  );
+  return byAge(rows);
+}
+
+const byAge = <T extends Pick<AppEvent, 'id' | 'created_at'>>(rows: T[]) => rows.sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || a.id.localeCompare(b.id));
 
 export class Workers {
   private readonly pool: Pool;
@@ -109,16 +139,24 @@ export class Workers {
     }
   }
 
-  /** One worker pass: claim events and start one proactive turn per conversation, coalescing its events. */
+  /**
+   * One worker pass: give up events that ran out of attempts, then claim events and start one
+   * proactive turn per conversation, coalescing its events.
+   */
   async tickEvents(): Promise<void> {
     if (this.workerBusy) return;
     this.workerBusy = true;
     try {
-      const claimed = await claimEvents(this.pool, this.householdId, this.timing, [...this.inFlight.keys()]);
-      const byConversation = new Map<string, ClaimedEvent[]>();
-      for (const e of claimed) byConversation.set(e.conversation_id, [...(byConversation.get(e.conversation_id) ?? []), e]);
-      for (const [conversationId, events] of byConversation) {
-        const run = this.proactiveTurn(conversationId, events).finally(() => this.inFlight.delete(conversationId));
+      const busy = [...this.inFlight.keys()];
+      const exhausted = groupByConversation(await claimExhausted(this.pool, this.householdId, this.timing, busy));
+      const claimed = groupByConversation(await claimEvents(this.pool, this.householdId, this.timing, busy));
+      for (const conversationId of new Set([...exhausted.keys(), ...claimed.keys()])) {
+        const run = (async () => {
+          const spent = exhausted.get(conversationId);
+          if (spent) await this.giveUp(conversationId, spent);
+          const events = claimed.get(conversationId);
+          if (events) await this.proactiveTurn(conversationId, events);
+        })().finally(() => this.inFlight.delete(conversationId));
         this.inFlight.set(conversationId, run);
       }
     } catch (err) {
@@ -138,11 +176,18 @@ export class Workers {
       await withLease(this.pool, conversationId, (lease) => runTurn(this.deps, lease, { type: 'proactive', events }), this.leaseTiming);
     } catch (err) {
       this.onError(err, `proactive turn for ${conversationId}`);
-      // The claim runs out and a later pass retries; after the last attempt, say something templated.
-      if (events.some((e) => e.turn_attempts >= this.timing.maxAttempts)) await this.giveUp(conversationId, events);
+      // The claims run out and a later pass retries. Events on their last attempt are given up now;
+      // events coalesced with them keep their remaining attempts.
+      const spent = events.filter((e) => e.turn_attempts >= this.timing.maxAttempts);
+      if (spent.length > 0) await this.giveUp(conversationId, spent);
     }
   }
 
+  /**
+   * Marks the events failed and says the templated fallback for them. Should this fail too, the
+   * events' claims run out and claimExhausted hands them back. An event another path already
+   * finished or gave up is skipped, so its fallback is said once.
+   */
   private async giveUp(conversationId: string, events: ClaimedEvent[]): Promise<void> {
     try {
       await withLease(
@@ -150,8 +195,15 @@ export class Workers {
         conversationId,
         (lease: ConversationLease) =>
           lease.write(async (tx) => {
-            await tx.query(`UPDATE agent.app_events SET turn_failed = true WHERE id = ANY ($1::uuid[])`, [events.map((e) => e.id)]);
-            await insertOutbound(tx, { conversationId, turnType: 'proactive', speech: events.map(fallbackSpeech).join(' ') });
+            const { rows } = await tx.query<Pick<AppEvent, 'kind' | 'payload' | 'created_at' | 'id'>>(
+              `UPDATE agent.app_events SET turn_failed = true
+                WHERE id = ANY ($1::uuid[]) AND turn_done_at IS NULL AND NOT turn_failed
+                RETURNING id, kind, payload, created_at`,
+              [events.map((e) => e.id)],
+            );
+            if (rows.length === 0) return;
+            const speech = byAge(rows).map(fallbackSpeech).join(' ');
+            await insertOutbound(tx, { conversationId, turnType: 'proactive', speech });
           }),
         this.leaseTiming,
       );
@@ -159,4 +211,10 @@ export class Workers {
       this.onError(err, `fallback for ${conversationId}`);
     }
   }
+}
+
+function groupByConversation(events: ClaimedEvent[]): Map<string, ClaimedEvent[]> {
+  const groups = new Map<string, ClaimedEvent[]>();
+  for (const e of events) groups.set(e.conversation_id, [...(groups.get(e.conversation_id) ?? []), e]);
+  return groups;
 }

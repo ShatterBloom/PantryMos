@@ -3,6 +3,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '@pantrymos/mcp-server';
 import { createDemoKitchen, type DemoKitchen, mcpTestConfig, stockKitchen, withAdmin } from '../../../../test/fixtures.ts';
+import { claimEvents, DEFAULT_WORKER_TIMING } from '../../src/workers.ts';
 import { agentRows, callTools, cardAction, chat, lastMessage, messages, say, startAgent, type TestAgent } from '../fixtures.ts';
 
 describe('proactive turns', () => {
@@ -12,11 +13,12 @@ describe('proactive turns', () => {
   });
   afterAll(async () => servers.close());
 
+  const timing = { ...DEFAULT_WORKER_TIMING, claimMs: 100, proactiveGapMs: 10_000, maxAttempts: 3 };
   let kitchen: DemoKitchen;
   let agent: TestAgent;
   beforeEach(async () => {
     kitchen = await createDemoKitchen();
-    agent = await startAgent(servers, kitchen, { workerTiming: { claimMs: 100, proactiveGapMs: 10_000, maxAttempts: 3 } });
+    agent = await startAgent(servers, kitchen, { workerTiming: timing });
   });
   afterEach(async () => agent.close());
 
@@ -133,6 +135,50 @@ describe('proactive turns', () => {
     expect((await proactive()).map((m) => m.speech)).toEqual(["Timer 'rice' is done."]);
     expect(await agentRows(agent, `SELECT turn_failed, turn_attempts FROM agent.app_events WHERE conversation_id = $1`, [agent.conversationId])).toEqual([
       { turn_failed: true, turn_attempts: 3 },
+    ]);
+  });
+
+  /** Claims the conversation's events as a worker would, then "dies" before running a turn. */
+  const claimAndDie = async () => {
+    await claimEvents(agent.pool, kitchen.householdId, timing, []);
+    await wait(150); // the claim runs out
+  };
+  const eventRows = () =>
+    agentRows<{ label: string; turn_failed: boolean; turn_attempts: number }>(
+      agent,
+      `SELECT payload ->> 'label' AS label, turn_failed, turn_attempts FROM agent.app_events WHERE conversation_id = $1 ORDER BY created_at`,
+      [agent.conversationId],
+    );
+
+  it('still says the fallback when the process died after the last claim', async () => {
+    await startTimer('rice');
+    await makeDue('rice');
+    await agent.workers.tickScheduler();
+    for (let attempt = 0; attempt < timing.maxAttempts; attempt++) await claimAndDie();
+
+    await tick();
+    await tick(); // said once
+    expect((await proactive()).map((m) => m.speech)).toEqual(["Timer 'rice' is done."]);
+    expect(await eventRows()).toEqual([{ label: 'rice', turn_failed: true, turn_attempts: 3 }]);
+  });
+
+  it('gives up only the coalesced events that used their last attempt', async () => {
+    await startTimer('rice');
+    await startTimer('pasta');
+    await makeDue('rice');
+    await agent.workers.tickScheduler();
+    for (let attempt = 0; attempt < timing.maxAttempts - 1; attempt++) await claimAndDie();
+    await makeDue('pasta');
+    agent.model.push(() => {
+      throw new Error('model unavailable');
+    });
+    await tick(); // one turn for both: rice's last attempt, pasta's first
+
+    expect(agent.model.requests.at(-1)!.messages.at(-1)!.content).toHaveLength(2);
+    expect((await proactive()).map((m) => m.speech)).toEqual(["Timer 'rice' is done."]);
+    expect(await eventRows()).toEqual([
+      { label: 'rice', turn_failed: true, turn_attempts: 3 },
+      { label: 'pasta', turn_failed: false, turn_attempts: 1 },
     ]);
   });
 
