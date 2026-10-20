@@ -191,6 +191,81 @@ export async function stockKitchen(kitchen: DemoKitchen, stock: Record<string, n
   return batches;
 }
 
+/**
+ * Changes a batch the way a committed adjustment would (M3 adds the real flow): an adjust event and
+ * the matching quantity, version and status change, so I1 still holds. `client` lets a test run it
+ * inside its own transaction to race a confirm.
+ */
+export async function adjustBatch(householdId: string, batchId: string, delta: number, client?: pg.ClientBase): Promise<void> {
+  const run = async (db: pg.ClientBase) => {
+    const [proposalId, confirmationId, opId] = [randomUUID(), randomUUID(), randomUUID()];
+    const { rows } = await db.query<{ item_id: string }>(`SELECT item_id FROM pantry.batches WHERE id = $1 FOR UPDATE`, [batchId]);
+    await db.query(
+      `INSERT INTO pantry.proposals (id, household_id, conversation_id, kind, subject_key, input, payload, preconditions, status, expires_at)
+       VALUES ($1, $2, $3, 'adjust', $4, '{}', '{}', '{}', 'committed', now())`,
+      [proposalId, householdId, randomUUID(), `fixture:${proposalId}`],
+    );
+    await db.query(
+      `INSERT INTO pantry.confirmations (id, household_id, proposal_id, version, user_id, channel, request_id, outcome)
+       VALUES ($1, $2, $3, 1, 'fixture', 'ui_click', $4, 'committed')`,
+      [confirmationId, householdId, proposalId, randomUUID()],
+    );
+    await db.query(
+      `INSERT INTO pantry.operations (id, household_id, kind, proposal_id, proposal_version, confirmation_id, summary)
+       VALUES ($1, $2, 'adjust', $3, 1, $4, '{}')`,
+      [opId, householdId, proposalId, confirmationId],
+    );
+    await db.query(
+      `INSERT INTO pantry.inventory_events (id, household_id, operation_id, batch_id, item_id, delta, reason)
+       VALUES ($1, $2, $3, $4, $5, $6, 'adjust')`,
+      [randomUUID(), householdId, opId, batchId, rows[0]!.item_id, delta],
+    );
+    await db.query(
+      `UPDATE pantry.batches SET quantity = quantity + $2, version = version + 1,
+              status = CASE WHEN quantity + $2 = 0 THEN 'depleted' ELSE 'active' END
+        WHERE id = $1`,
+      [batchId, delta],
+    );
+  };
+  if (client) return run(client);
+  return withAdmin(async (admin) => {
+    await admin.query('BEGIN');
+    await run(admin);
+    await admin.query('COMMIT');
+  });
+}
+
+/** POSTs (or PATCHes) to the internal listener with the service token. */
+export async function internalCall(
+  servers: RunningServers,
+  path: string,
+  body: unknown,
+  method: 'POST' | 'PATCH' = 'POST',
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const { port } = servers.internal.server.address() as AddressInfo;
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method,
+    headers: { 'content-type': 'application/json', 'x-service-token': TEST_SERVICE_TOKEN },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
+
+/** I1: every batch's quantity equals the sum of its events. Returns the ids of batches that break it. */
+export async function ledgerMismatches(householdId: string): Promise<string[]> {
+  return withAdmin(async (admin) => {
+    const { rows } = await admin.query<{ id: string }>(
+      `SELECT b.id FROM pantry.batches b
+         LEFT JOIN pantry.inventory_events e ON e.batch_id = b.id
+        WHERE b.household_id = $1
+        GROUP BY b.id, b.quantity
+       HAVING b.quantity <> COALESCE(sum(e.delta), 0)`,
+      [householdId],
+    );
+    return rows.map((r) => r.id);
+  });
+}
+
 /** "Today" in a timezone, computed by Postgres the same way the server does. */
 export async function todayIn(timezone: string): Promise<string> {
   return withAdmin(async (admin) => {
