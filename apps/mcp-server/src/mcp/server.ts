@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ToolContext } from './context.ts';
+import { registerAddToShoppingList } from './tools/addToShoppingList.ts';
 import { registerCancelCooking } from './tools/cancelCooking.ts';
 import { registerExpiringSoon } from './tools/expiringSoon.ts';
 import { registerGetSession } from './tools/getSession.ts';
@@ -40,5 +41,6 @@ export function buildMcpServer(ctx: ToolContext): McpServer {
   registerProposeAdjustment(server, ctx);
   registerProposeUndo(server, ctx);
   registerListRecentOperations(server, ctx);
+  registerAddToShoppingList(server, ctx);
   return server;
 }

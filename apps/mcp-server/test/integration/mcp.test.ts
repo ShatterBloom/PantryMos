@@ -30,6 +30,7 @@ const EXPECTED_ANNOTATIONS: Record<string, { readOnlyHint: boolean; destructiveH
   propose_undo: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   propose_adjustment: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   propose_consumption_revision: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  add_to_shopping_list: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
 };
 
 describe('MCP server over Streamable HTTP', () => {
