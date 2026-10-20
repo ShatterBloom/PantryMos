@@ -55,13 +55,15 @@ export async function runIdempotent(
       await tx.query('ROLLBACK TO SAVEPOINT effect');
       outcome = { status: err.status, body: err.toBody() };
     }
-    const response = JSON.stringify(outcome.body);
-    await tx.query(
-      `UPDATE pantry.request_log SET status_code = $3, response = $4 WHERE household_id = $1 AND request_id = $2`,
-      [key.householdId, key.requestId, outcome.status, response],
+    // Return the stored jsonb form (which normalizes key order), so the first response and every
+    // replay are identical, down to the serialized bytes.
+    const stored = await tx.query<{ response: unknown }>(
+      `UPDATE pantry.request_log SET status_code = $3, response = $4
+        WHERE household_id = $1 AND request_id = $2
+        RETURNING response`,
+      [key.householdId, key.requestId, outcome.status, JSON.stringify(outcome.body)],
     );
-    // Return the stored form, so the first response and every replay are identical.
-    return { status: outcome.status, body: JSON.parse(response) as unknown, replayed: false };
+    return { status: outcome.status, body: stored.rows[0]!.response, replayed: false };
   });
 }
 

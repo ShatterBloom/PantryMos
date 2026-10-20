@@ -8,7 +8,7 @@ import { type Outcome, runIdempotent } from '../../src/db/requestLog.ts';
 import type { Tx } from '../../src/db/tx.ts';
 import { PantryError } from '../../src/domain/errors.ts';
 import type { ToolContext } from '../../src/mcp/context.ts';
-import { runWriteTool } from '../../src/mcp/toolkit.ts';
+import { parseErrorResult, runWriteTool } from '../../src/mcp/toolkit.ts';
 import { createHousehold, mcpTestConfig } from '../../../../test/fixtures.ts';
 import { TEST_MCP_DB_URL } from '../../../../test/env.ts';
 
@@ -49,6 +49,14 @@ describe('runIdempotent', () => {
     expect(first.replayed).toBe(false);
     expect(second).toEqual({ ...first, replayed: true });
     expect(await countMarker(marker)).toBe(1);
+  });
+
+  it('returns byte-identical bodies on the first call and on replay, whatever the key order', async () => {
+    const k = key();
+    const effect = async (): Promise<Outcome> => ({ status: 200, body: { zeta: 1, alpha: { y: 2, b: 3 }, mid: [{ k: 1, a: 2 }] } });
+    const first = await runIdempotent(pool, k, effect);
+    const replay = await runIdempotent(pool, k, effect);
+    expect(JSON.stringify(replay.body)).toBe(JSON.stringify(first.body));
   });
 
   it('treats payloads that differ only in key order as the same request', async () => {
@@ -189,21 +197,19 @@ describe('runWriteTool', () => {
 
   it('returns isError results for missing metadata, conflicts and business errors', async () => {
     const noMeta = await runWriteTool(ctx, call(undefined), async () => ({ data: {}, text: 'ok' }));
-    expect(noMeta).toMatchObject({ isError: true, structuredContent: { code: 'request_id_required' } });
+    expect(parseErrorResult(noMeta)).toMatchObject({ code: 'request_id_required' });
 
     const m = meta();
     await runWriteTool(ctx, call(m), async () => ({ data: {}, text: 'ok' }));
     const conflict = await runWriteTool(ctx, call(m, { x: 2 }), async () => ({ data: {}, text: 'ok' }));
-    expect(conflict).toMatchObject({ isError: true, structuredContent: { code: 'request_conflict' } });
+    expect(parseErrorResult(conflict)).toMatchObject({ code: 'request_conflict' });
 
     const business = await runWriteTool(ctx, call(meta()), async () => {
       throw new PantryError('unknown_item', 'No such item.', { ask: 'What kind of item is it?' });
     });
-    expect(business).toEqual({
-      isError: true,
-      content: [{ type: 'text', text: 'No such item. What kind of item is it?' }],
-      structuredContent: { code: 'unknown_item', message: 'No such item.', ask: 'What kind of item is it?' },
-    });
+    expect(business.isError).toBe(true);
+    expect((business.content as Array<{ text: string }>)[0]?.text).toBe('No such item. What kind of item is it?');
+    expect(parseErrorResult(business)).toEqual({ code: 'unknown_item', message: 'No such item.', ask: 'What kind of item is it?' });
   });
 
   it('rethrows faults so the transaction rolls back', async () => {

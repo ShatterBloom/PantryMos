@@ -3,6 +3,7 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
 import { addDays, daysBetween, formatShort } from '../../src/domain/dates.ts';
+import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
   connectMcpClient,
   createBatch,
@@ -147,7 +148,7 @@ describe('inventory read tools', () => {
     it('asks which item is meant when the name is ambiguous', async () => {
       const { res } = await listInventory({ item: 'pepper' });
       expect(res.isError).toBe(true);
-      expect(res.structuredContent).toMatchObject({
+      expect(parseErrorResult(res)).toMatchObject({
         code: 'ambiguous_item',
         options: ['black pepper', 'red pepper'],
         ask: 'Which one do you mean: black pepper or red pepper?',

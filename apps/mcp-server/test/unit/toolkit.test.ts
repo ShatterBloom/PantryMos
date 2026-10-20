@@ -4,6 +4,7 @@ import { PantryError } from '../../src/domain/errors.ts';
 import {
   errorResult,
   INSPECTOR_CONVERSATION_ID,
+  parseErrorResult,
   readRequestMeta,
   runReadTool,
   successResult,
@@ -69,16 +70,32 @@ describe('tool results (§7.1)', () => {
     });
   });
 
-  it('a business error sets isError and appends the question to ask', () => {
+  it('a business error sets isError, appends the question, and carries the body as JSON', () => {
     const body = new PantryError('needs_clarification', 'Unit unknown.', { ask: 'How many eggs in a carton?' }).toBody();
-    expect(errorResult(body)).toEqual({
+    const result = errorResult(body);
+    expect(result).toEqual({
       isError: true,
-      content: [{ type: 'text', text: 'Unit unknown. How many eggs in a carton?' }],
-      structuredContent: { code: 'needs_clarification', message: 'Unit unknown.', ask: 'How many eggs in a carton?' },
+      content: [
+        { type: 'text', text: 'Unit unknown. How many eggs in a carton?' },
+        { type: 'text', text: JSON.stringify(body) },
+      ],
     });
-    expect(errorResult(new PantryError('unknown_item', 'No such item.').toBody()).content).toEqual([
-      { type: 'text', text: 'No such item.' },
-    ]);
+    expect(parseErrorResult(result)).toEqual(body);
+    expect(errorResult(new PantryError('unknown_item', 'No such item.').toBody()).content?.[0]).toEqual({
+      type: 'text',
+      text: 'No such item.',
+    });
+  });
+
+  it('never sets structuredContent on errors (SDK clients validate it against the success schema)', () => {
+    expect(errorResult(new PantryError('unknown_item', 'x').toBody())).not.toHaveProperty('structuredContent');
+  });
+
+  it('parseErrorResult ignores successes and malformed results', () => {
+    expect(parseErrorResult(successResult({ a: 1 }, 'ok'))).toBeNull();
+    expect(parseErrorResult({ isError: true, content: [{ type: 'text', text: 'only text' }] })).toBeNull();
+    expect(parseErrorResult({ isError: true, content: [{ type: 'text', text: 'x' }, { type: 'text', text: '{bad' }] })).toBeNull();
+    expect(parseErrorResult({ isError: true })).toBeNull();
   });
 
   it('runReadTool turns PantryError into a result and rethrows faults', async () => {
@@ -89,7 +106,7 @@ describe('tool results (§7.1)', () => {
       runReadTool(async () => {
         throw new PantryError('ambiguous_item', 'Which one?', { options: ['a', 'b'] });
       }),
-    ).resolves.toMatchObject({ isError: true, structuredContent: { code: 'ambiguous_item', options: ['a', 'b'] } });
+    ).resolves.toSatisfy((r) => parseErrorResult(r as never)?.code === 'ambiguous_item');
     await expect(
       runReadTool(async () => {
         throw new Error('db down');

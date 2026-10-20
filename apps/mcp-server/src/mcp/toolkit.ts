@@ -17,9 +17,33 @@ export function successResult(data: Record<string, unknown>, text: string): Call
   return { content: [{ type: 'text', text }], structuredContent: data };
 }
 
+/**
+ * Business error (§7.1): a sentence for people, then the full error body as JSON for models and
+ * programs. No `structuredContent`: SDK clients (1.32.1) validate it against the tool's success
+ * outputSchema even when `isError` is set, which would turn every business error into a protocol error.
+ */
 export function errorResult(error: BusinessError): CallToolResult {
   const text = error.ask ? `${error.message} ${error.ask}` : error.message;
-  return { isError: true, content: [{ type: 'text', text }], structuredContent: error };
+  return {
+    isError: true,
+    content: [
+      { type: 'text', text },
+      { type: 'text', text: JSON.stringify(error) },
+    ],
+  };
+}
+
+/** Reads the error body back out of an `errorResult` (for the agent and tests). */
+export function parseErrorResult(result: object): BusinessError | null {
+  const { isError, content } = result as { isError?: unknown; content?: unknown };
+  if (isError !== true || !Array.isArray(content)) return null;
+  const json = (content as Array<{ type?: string; text?: string }>)[1];
+  if (json?.type !== 'text' || json.text === undefined) return null;
+  try {
+    return JSON.parse(json.text) as BusinessError;
+  } catch {
+    return null;
+  }
 }
 
 export interface RequestMeta {
