@@ -56,6 +56,10 @@ services:
       AGENT_PORT: 7400
       AGENT_MCP_URL: http://127.0.0.1:7410/mcp
       AGENT_INTERNAL_URL: http://127.0.0.1:7411
+      # Bedrock credentials: a profile from the host's ~/.aws, mounted read-only.
+      AWS_PROFILE: ${AWS_PROFILE:-pantrymos-bedrock}
+    volumes:
+      - ~/.aws:/home/node/.aws:ro
     depends_on:
       mcp-server: { condition: service_started }
 
