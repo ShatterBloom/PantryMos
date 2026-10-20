@@ -41,7 +41,8 @@ describe('ConfirmGate', () => {
   let client: Client;
   beforeEach(async () => {
     kitchen = await createDemoKitchen();
-    agent = await startAgent(servers, kitchen, { windowMs: 1000 });
+    // The real 30 s window: a test that needs it closed ends it explicitly (expireWindows), never by waiting.
+    agent = await startAgent(servers, kitchen);
     client = await connectMcpClient(servers, kitchen.token);
   });
   afterEach(async () => {
@@ -61,6 +62,11 @@ describe('ConfirmGate', () => {
         )
       ).rows,
     );
+  /** The open window runs out now. */
+  const expireWindows = () =>
+    agent.pool.query(`UPDATE agent.voice_windows SET window_ends_at = now() - interval '1 second' WHERE conversation_id = $1`, [
+      agent.conversationId,
+    ]);
   const proposalStatus = async (id: string) =>
     withAdmin(async (admin) => (await admin.query(`SELECT status FROM pantry.proposals WHERE id = $1`, [id])).rows[0].status);
   const timers = () => agentRows(agent, `SELECT label, seconds, status FROM agent.timers WHERE conversation_id = $1`, [agent.conversationId]);
@@ -142,7 +148,7 @@ describe('ConfirmGate', () => {
   it('VC4: "yes" after the window ran out re-reads the card and commits nothing', async () => {
     const card = await intakeCard();
     await ack(agent, card.id);
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await expireWindows();
     const calls = modelCalls();
     await voice(agent, 'yes');
     expect(modelCalls()).toBe(calls);
