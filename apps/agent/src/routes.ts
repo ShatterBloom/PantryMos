@@ -166,9 +166,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
           const result = await act(view, body);
           await lease.write(async (tx) => {
             for (const e of result.events ?? []) await insertEvent(tx, { conversationId: view.conversation_id, ...e });
+            // The user answered by button: an open voice question no longer stands (§8.5).
+            await closeOpenWindows(tx, view.conversation_id);
             if (result.readBack) {
               // An edited or refreshed card is read back again (§8.8).
-              await closeOpenWindows(tx, view.conversation_id);
               const fresh = result.readBack;
               await insertOutbound(tx, {
                 conversationId: view.conversation_id,

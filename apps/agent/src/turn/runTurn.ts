@@ -178,6 +178,8 @@ async function startTurn(lease: ConversationLease, trigger: TurnTrigger): Promis
     let snapshot: TurnSnapshot | null = null;
     let events: Array<Pick<AppEvent, 'kind' | 'payload'>>;
     if (trigger.type === 'user') {
+      // The user moved on: a question still open is no longer the one a later "yes" answers (§8.5).
+      await closeOpenWindows(tx, conversationId);
       snapshot = await lastDeliveredStep(tx, conversationId);
       events = await drainForUserTurn(tx, conversationId);
     } else {

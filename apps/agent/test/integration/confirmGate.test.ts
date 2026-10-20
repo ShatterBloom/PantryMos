@@ -157,6 +157,28 @@ describe('ConfirmGate', () => {
     expect((await events()).map((e) => e.kind)).toEqual(['window_expired']);
   });
 
+  it('closes the window when the user moves on, so a later "yes" only re-reads the card', async () => {
+    const card = await intakeCard();
+    await ack(agent, card.id);
+    agent.model.push(say('Anything else?'));
+    await chat(agent, "what's expiring soon?"); // typed: not the gate's
+    const calls = modelCalls();
+    await voice(agent, 'yes');
+    expect(modelCalls()).toBe(calls);
+    expect(await confirmations()).toEqual([]);
+    expect(await proposalStatus(proposal(card).proposal_id)).toBe('pending');
+    expect(await lastMessage(agent)).toMatchObject({ turn_type: 'gate', voice_prompt: { kind: 'proposal_confirm', version: 1 } });
+  });
+
+  it('closes the window when the user answers by button', async () => {
+    const card = await intakeCard();
+    await ack(agent, card.id);
+    expect((await cardAction(agent, 'POST', `/api/proposals/${proposal(card).proposal_id}/reject`, { version: 1 })).status).toBe(200);
+    expect(await agentRows(agent, `SELECT status FROM agent.voice_windows WHERE conversation_id = $1`, [agent.conversationId])).toEqual([
+      { status: 'closed' },
+    ]);
+  });
+
   it('VC5: "yes" with no card at all is a normal model turn', async () => {
     agent.model.push(say('Yes to what?'));
     await voice(agent, 'yes');
