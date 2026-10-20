@@ -1,9 +1,8 @@
-// Seeds the demo household and the agent's MCP client token. Idempotent.
-// Runs as the Postgres superuser against the app database. Usage: node scripts/seed-dev.ts
-// (M1 extends this with the catalog, recipes and sample history.)
-import { createHash } from 'node:crypto';
+// Seeds the demo household: catalog, the agent's MCP client token, and a dev Inspector token.
+// Idempotent. Runs as the Postgres superuser against the app database. Usage: node scripts/seed-dev.ts
 import pg from 'pg';
 import { loadEnv, requireEnv, withDatabase } from './lib/env.ts';
+import { seedDemo } from './lib/seed.ts';
 
 loadEnv();
 
@@ -17,16 +16,17 @@ const agentToken = requireEnv('AGENT_MCP_TOKEN');
 const client = new pg.Client({ connectionString: withDatabase(adminUrl, dbName) });
 await client.connect();
 try {
-  await client.query(
-    `INSERT INTO pantry.households (id, name) VALUES ($1, 'Demo kitchen') ON CONFLICT (id) DO NOTHING`,
-    [DEMO_HOUSEHOLD_ID],
-  );
-  await client.query(
-    `INSERT INTO pantry.api_clients (id, household_id, name, token_hash) VALUES ($1, $2, 'agent', $3)
-     ON CONFLICT (id) DO UPDATE SET token_hash = EXCLUDED.token_hash, revoked_at = NULL`,
-    [AGENT_CLIENT_ID, DEMO_HOUSEHOLD_ID, createHash('sha256').update(agentToken).digest('hex')],
-  );
-  console.log('seed: demo household and agent client ready');
+  const result = await seedDemo(client, {
+    householdId: DEMO_HOUSEHOLD_ID,
+    householdName: 'Demo kitchen',
+    agent: { clientId: AGENT_CLIENT_ID, token: agentToken },
+    inspector: true,
+  });
+  console.log(`seed: demo household ready (${result.itemsCreated} new catalog items)`);
+  if (result.inspectorToken) {
+    // Printed once; only its hash is stored. Revoke the row in pantry.api_clients to get a new one.
+    console.log(`seed: MCP Inspector token (shown once): ${result.inspectorToken}`);
+  }
 } finally {
   await client.end();
 }

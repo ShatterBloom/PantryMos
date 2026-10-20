@@ -33,7 +33,7 @@ pnpm install
 pnpm db:up            # PostgreSQL on 127.0.0.1:5432
 pnpm db:bootstrap     # roles + databases
 pnpm db:migrate
-pnpm db:seed          # demo household + agent MCP token
+pnpm db:seed          # demo household, catalog, agent token; prints a dev Inspector token once
 
 pnpm dev:mcp          # MCP on 127.0.0.1:7410, internal API on 127.0.0.1:7411
 pnpm dev:agent        # API on 127.0.0.1:7400
@@ -61,12 +61,16 @@ Tests live under `test/unit/` and `test/integration/` in each package.
 
 ## Trying the MCP server with MCP Inspector
 
+The first `pnpm db:seed` prints a dev Inspector token. Only its hash is stored, so copy it then.
+To get a new one, revoke the `inspector-dev` row in `pantry.api_clients` and seed again.
+
 ```bash
 npx @modelcontextprotocol/inspector --cli http://127.0.0.1:7410/mcp --transport http \
-  --header "Authorization: Bearer $AGENT_MCP_TOKEN" --method tools/list
+  --header "Authorization: Bearer $INSPECTOR_TOKEN" --method tools/list
 ```
 
 Browser-based Inspector sessions also need their origin in `MCP_ALLOWED_ORIGINS`.
+Write tools need `_meta` request ids; set `ALLOW_ANON_WRITES=1` (dev only) to try them from Inspector.
 
 ## License
 
