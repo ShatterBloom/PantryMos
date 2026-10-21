@@ -174,13 +174,7 @@ export async function createDemoKitchen(timezone?: string): Promise<DemoKitchen>
 
 /** Adds one batch per entry (base units), bought `daysAgo` days before today, via createBatch. */
 export async function stockKitchen(kitchen: DemoKitchen, stock: Record<string, number>, daysAgo = 1): Promise<Record<string, string>> {
-  const tz = await withAdmin(async (admin) => {
-    const { rows } = await admin.query<{ timezone: string }>(`SELECT timezone FROM pantry.households WHERE id = $1`, [
-      kitchen.householdId,
-    ]);
-    return rows[0]!.timezone;
-  });
-  const today = await todayIn(tz);
+  const today = await householdToday(kitchen.householdId);
   const purchased = new Date(Date.parse(`${today}T00:00:00Z`) - daysAgo * 86_400_000).toISOString().slice(0, 10);
   const batches: Record<string, string> = {};
   for (const [name, quantity] of Object.entries(stock)) {
@@ -246,6 +240,15 @@ export async function ledgerMismatches(householdId: string): Promise<string[]> {
 }
 
 /** "Today" in a timezone, computed by Postgres the same way the server does. */
+/** Today's date (ISO) in the household's timezone. */
+export async function householdToday(householdId: string): Promise<string> {
+  const tz = await withAdmin(async (admin) => {
+    const { rows } = await admin.query<{ timezone: string }>(`SELECT timezone FROM pantry.households WHERE id = $1`, [householdId]);
+    return rows[0]!.timezone;
+  });
+  return todayIn(tz);
+}
+
 export async function todayIn(timezone: string): Promise<string> {
   return withAdmin(async (admin) => {
     const { rows } = await admin.query<{ today: string }>(`SELECT (now() AT TIME ZONE $1)::date::text AS today`, [

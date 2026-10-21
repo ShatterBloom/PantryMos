@@ -8,6 +8,13 @@ const csv = (value: unknown) =>
         .filter(Boolean)
     : value;
 
+const BedrockSchema = z.object({
+  region: z.string().min(1).default('ap-southeast-2'),
+  /** An Amazon Nova model or inference profile (Converse API). */
+  modelId: z.string().min(1).default('apac.amazon.nova-pro-v1:0'),
+  maxTokens: z.coerce.number().int().min(64).max(4096).default(1024),
+});
+
 const ConfigSchema = z.object({
   databaseUrl: z.string().min(1),
   bindHost: z.string().default('127.0.0.1'),
@@ -41,12 +48,7 @@ const ConfigSchema = z.object({
       .transform((v) => v === 'true'),
     ttlSeconds: z.coerce.number().int().positive().default(12 * 3600),
   }),
-  bedrock: z.object({
-    region: z.string().min(1).default('ap-southeast-2'),
-    /** An Amazon Nova model or inference profile (Converse API). */
-    modelId: z.string().min(1).default('apac.amazon.nova-pro-v1:0'),
-    maxTokens: z.coerce.number().int().min(64).max(4096).default(1024),
-  }),
+  bedrock: BedrockSchema,
 });
 
 export type AgentConfig = z.infer<typeof ConfigSchema>;
@@ -72,10 +74,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
       secureCookie: env.AGENT_SECURE_COOKIE,
       ttlSeconds: env.AGENT_SESSION_TTL_SECONDS,
     },
-    bedrock: {
-      region: env.BEDROCK_REGION ?? env.AWS_REGION,
-      modelId: env.BEDROCK_MODEL_ID,
-      maxTokens: env.BEDROCK_MAX_TOKENS,
-    },
+    bedrock: bedrockEnv(env),
   });
+}
+
+const bedrockEnv = (env: NodeJS.ProcessEnv) => ({
+  region: env.BEDROCK_REGION ?? env.AWS_REGION,
+  modelId: env.BEDROCK_MODEL_ID,
+  maxTokens: env.BEDROCK_MAX_TOKENS,
+});
+
+/** The model settings alone, from the same variables, for tools that only talk to Bedrock (the eval). */
+export function loadBedrockConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig['bedrock'] {
+  return BedrockSchema.parse(bedrockEnv(env));
 }

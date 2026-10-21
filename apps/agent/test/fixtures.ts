@@ -87,11 +87,11 @@ export function agentTestConfig(
   };
 }
 
-export interface TestAgent {
+export interface TestAgent<M extends ModelClient = ScriptedModel> {
   app: FastifyInstance;
   workers: Workers;
   pool: pg.Pool;
-  model: ScriptedModel;
+  model: M;
   conversationId: string;
   /** The signed-in session's Cookie header. */
   cookie: string;
@@ -112,14 +112,21 @@ export async function signIn(app: FastifyInstance, passcode?: string): Promise<s
   return String(res.headers['set-cookie']).split(';')[0]!;
 }
 
-export async function startAgent(
+export type StartOptions = Partial<Omit<AgentOptions, 'model'>> & { config?: Partial<AgentConfig> };
+
+export function startAgent(servers: RunningServers, kitchen: Pick<DemoKitchen, 'householdId' | 'token'>, options: StartOptions = {}): Promise<TestAgent> {
+  return startAgentWith(new ScriptedModel(), servers, kitchen, options);
+}
+
+/** An agent on the given model: the scripted one, or the real one for the eval (§9.4). */
+export async function startAgentWith<M extends ModelClient>(
+  model: M,
   servers: RunningServers,
   kitchen: Pick<DemoKitchen, 'householdId' | 'token'>,
-  options: Partial<Omit<AgentOptions, 'model'>> & { config?: Partial<AgentConfig> } = {},
-): Promise<TestAgent> {
+  options: StartOptions = {},
+): Promise<TestAgent<M>> {
   const { config, ...rest } = options;
   const pool = createPool(config?.databaseUrl ?? TEST_AGENT_DB_URL);
-  const model = new ScriptedModel();
   const { app, workers } = await buildAgentApp(agentTestConfig(servers, kitchen, config), pool, {
     model,
     log: false,
@@ -150,7 +157,7 @@ export interface ChatReply {
 
 /** POST /api/chat from the app's origin. */
 export async function chat(
-  agent: TestAgent,
+  agent: TestAgent<ModelClient>,
   text: string,
   options: { inputMode?: 'voice' | 'text'; requestId?: string; conversationId?: string } = {},
 ): Promise<ChatReply> {
@@ -167,7 +174,7 @@ export async function chat(
   return { status: res.statusCode, body: res.json(), headers: res.headers };
 }
 
-export const voice = (agent: TestAgent, text: string, requestId?: string) =>
+export const voice = (agent: TestAgent<ModelClient>, text: string, requestId?: string) =>
   chat(agent, text, { inputMode: 'voice', ...(requestId ? { requestId } : {}) });
 
 export interface Outbound {
@@ -180,17 +187,17 @@ export interface Outbound {
   step_no: number | null;
 }
 
-export async function messages(agent: TestAgent, after = 0): Promise<Outbound[]> {
+export async function messages(agent: TestAgent<ModelClient>, after = 0): Promise<Outbound[]> {
   const res = await agent.api({ method: 'GET', url: `/api/messages?conversation_id=${agent.conversationId}&after=${after}` });
   return (res.json() as { messages: Outbound[] }).messages;
 }
 
-export async function lastMessage(agent: TestAgent): Promise<Outbound> {
+export async function lastMessage(agent: TestAgent<ModelClient>): Promise<Outbound> {
   return (await messages(agent)).at(-1)!;
 }
 
 /** The web app's ack once it finished speaking a message (§8.5). */
-export async function ack(agent: TestAgent, messageId: number, conversationId = agent.conversationId) {
+export async function ack(agent: TestAgent<ModelClient>, messageId: number, conversationId = agent.conversationId) {
   const res = await agent.api({
     method: 'POST',
     url: '/api/voice-windows/ack',
@@ -201,7 +208,7 @@ export async function ack(agent: TestAgent, messageId: number, conversationId = 
 
 /** A card button click, through the agent (§8.8). */
 export async function cardAction(
-  agent: TestAgent,
+  agent: TestAgent<ModelClient>,
   method: 'POST' | 'PATCH',
   path: string,
   payload: Record<string, unknown>,
@@ -234,6 +241,6 @@ export function crashOnce(pool: pg.Pool, pattern: RegExp): { fired: () => boolea
 }
 
 /** Runs agent-side SQL as the agent role (no pantry access). */
-export async function agentRows<T extends pg.QueryResultRow>(agent: TestAgent, sql: string, params: unknown[] = []): Promise<T[]> {
+export async function agentRows<T extends pg.QueryResultRow>(agent: TestAgent<ModelClient>, sql: string, params: unknown[] = []): Promise<T[]> {
   return (await agent.pool.query<T>(sql, params)).rows;
 }
