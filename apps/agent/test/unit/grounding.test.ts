@@ -57,6 +57,19 @@ describe('ground', () => {
     expect(ground('Next step: Scramble the eggs in half the oil. Ready?', { committed: false }).text).toBe('Ready?');
   });
 
+  it('says markdown as speech', () => {
+    // As Nova 2 Lite said of a shortfall (eval G4).
+    expect(
+      ground(
+        'The meal would be **short** of milk. I can offer three ways to fix this:\n- Make fewer servings\n- Use a substitute ingredient\n- Add milk to your shopping list\n\nWhich would you like?',
+        { committed: false },
+      ).text,
+    ).toBe(
+      'The meal would be short of milk. I can offer three ways to fix this: make fewer servings, use a substitute ingredient, add milk to your shopping list. Which would you like?',
+    );
+    expect(ground('## Options\n1. BLT sandwich.\n2) Omelette', { committed: false }).text).toBe('Options BLT sandwich, omelette.');
+  });
+
   it('leaves out a claim that a timer runs unless the turn started one', () => {
     // As Nova said of a step whose timer the app was only offering (eval G6).
     for (const s of [

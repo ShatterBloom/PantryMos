@@ -30,6 +30,8 @@ const TIMER_CLAIMS: readonly RegExp[] = [
   /\b(?:I've|I have|I|the app(?:\s+has)?)\s+(?:just\s+)?(?:set|started)\b.*\btimer\b/i,
 ];
 
+const BULLET = /^(?:[-*•]|\d+[.)])\s+/;
+
 export interface Grounded {
   text: string;
   /** Sentences left out because they claim a stock change nothing in the turn backs. */
@@ -48,7 +50,7 @@ export interface Grounded {
 export function ground(text: string, { committed, timerStarted = false }: { committed: boolean; timerStarted?: boolean }): Grounded {
   const out: Grounded = { text: '', claims: [], timers: [], steps: [] };
   const kept: string[] = [];
-  for (const sentence of sentences(text)) {
+  for (const sentence of sentences(spoken(text))) {
     // Nova writes curly apostrophes: "I’ve".
     const plain = sentence.replace(/[‘’]/g, "'");
     const asserts = !HEDGED.test(plain) && !plain.endsWith('?');
@@ -81,6 +83,30 @@ export function withoutRecital(text: string, readback: string): string {
       return numbers.length === 0 || !numbers.every((n) => onCard.has(n));
     })
     .join(' ');
+}
+
+/**
+ * Markdown read aloud as speech: emphasis and headings dropped, a list said as one run of items
+ * ("…fix this: make fewer servings, use a substitute", eval G4).
+ */
+function spoken(text: string): string {
+  const out: string[] = [];
+  let items: string[] = [];
+  const flush = () => {
+    if (items.length > 0) out.push(`${items.join(', ')}.`);
+    items = [];
+  };
+  for (const raw of text.replace(/\*\*|__|`/g, '').split('\n')) {
+    const line = raw.trim().replace(/^#+\s*/, '');
+    if (BULLET.test(line)) {
+      items.push(line.replace(BULLET, '').replace(/[.,;]$/, '').replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase()));
+    } else if (line !== '') {
+      flush();
+      out.push(line);
+    }
+  }
+  flush();
+  return out.join(' ');
 }
 
 function sentences(text: string): string[] {
