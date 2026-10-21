@@ -47,10 +47,10 @@ export const PLANNERS: Record<ProposalKind, Planner> = {
     propose: (tx, householdId, conversationId, input) => proposeRevision(tx, householdId, conversationId, input as ReviseInput),
   },
   adjust: {
-    // The app edits the amount: a new delta or counted quantity replaces the old one.
+    // The app edits the amount: a new delta or counted quantity replaces the old one, or the share.
     Changes: AdjustInput.pick({ delta: true, set_quantity: true }),
     merge: (input, changes) => {
-      const { delta: _delta, set_quantity: _set, ...rest } = input as AdjustInput;
+      const { delta: _delta, set_quantity: _set, share: _share, ...rest } = input as AdjustInput;
       return { ...rest, ...(changes as Pick<AdjustInput, 'delta' | 'set_quantity'>) };
     },
     propose: (tx, householdId, conversationId, input) => proposeAdjustment(tx, householdId, conversationId, input as AdjustInput),

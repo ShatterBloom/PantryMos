@@ -239,7 +239,8 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     '/api/proposals/:id',
     cardAction(EditBody, 'api:edit', async (view, body) => {
       const res = await internal.edit(view.proposal_id, body);
-      return { response: res, readBack: res.status === 200 ? await internal.view(view.proposal_id) : null };
+      // An edit can land on another card that replaces this one: read back the card it made.
+      return { response: res, readBack: res.status === 200 ? await internal.view(res.body.proposal_id as string) : null };
     }),
   );
 

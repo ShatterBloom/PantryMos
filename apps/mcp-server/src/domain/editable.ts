@@ -5,6 +5,7 @@ import type { IntakeInput } from '../proposals/intake.ts';
 import type { AdjustInput, AdjustPayload } from '../proposals/adjust.ts';
 import type { ConsumePayload } from '../proposals/consume.ts';
 import type { RevisePayload } from '../proposals/revise.ts';
+import { roundQuantity } from './units.ts';
 
 /** A line amount the user can change, in the unit shown. */
 export interface EditableLine {
@@ -50,10 +51,12 @@ export function editableOf(kind: ProposalKind, input: unknown, payload: unknown)
       };
     case 'adjust': {
       const stored = input as AdjustInput;
-      const { item, unit } = payload as AdjustPayload;
+      const { item, unit, allocation, new_batch } = payload as AdjustPayload;
+      // A share is edited as the change it worked out to.
+      const net = roundQuantity(allocation.reduce((sum, a) => sum + a.delta, 0) + (new_batch?.quantity ?? 0));
       return stored.set_quantity !== undefined
         ? { type: 'amount', field: 'set_quantity', item, value: stored.set_quantity, unit }
-        : { type: 'amount', field: 'delta', item, value: stored.delta ?? 0, unit };
+        : { type: 'amount', field: 'delta', item, value: stored.delta ?? net, unit };
     }
     case 'undo':
       return null;

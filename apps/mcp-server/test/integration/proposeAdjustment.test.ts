@@ -172,6 +172,62 @@ describe('propose_adjustment', () => {
     expect(await codes({ item: 'egg', set_quantity: 3 })).toBe('ambiguous_batch');
   });
 
+  it('works out a share of the stock and says how, so the user can correct it', async () => {
+    const p = await ok({ item: 'egg', share: { fraction: 0.5, of: 'stock' }, reason: 'discard' });
+    expect(p.card.readback_text).toBe("I'll record that 8 eggs were thrown out: half of the 16 eggs you had. Say confirm, or tell me what to change.");
+    // Counted items go whole: a third of 16 is 5.
+    const third = await ok({ batch_id: eggNew, share: { fraction: 1 / 3, of: 'stock' }, reason: 'discard' });
+    expect(third.card.readback_text).toMatch(/^I'll record that 4 eggs were thrown out: a third of the 12 eggs you had\./);
+    expect((await stored(p.proposal_id)).input).toMatchObject({ share: { fraction: 0.5, of: 'stock' } });
+  });
+
+  it('re-proposes a corrected share as a new version of the same card, and commits the one confirmed', async () => {
+    await startPasta(kitchen, client); // milk: 1000 ml in stock, 250 ml in the recipe
+    const milk = kitchen.items.milk!;
+    const half = await ok({ item: 'milk', share: { fraction: 0.5, of: 'stock' }, reason: 'discard' });
+    expect(half.card.readback_text).toMatch(/^I'll record that 500 milliliters of milk were thrown out: half of the 1000 milliliters of milk you had\./);
+    // "No, half of what the recipe uses."
+    const corrected = await ok({ item: 'milk', share: { fraction: 0.5, of: 'recipe' }, reason: 'discard' });
+    expect(corrected).toMatchObject({ proposal_id: half.proposal_id, version: 2 });
+    expect(corrected.card.readback_text).toMatch(/^I'll record that 125 milliliters of milk were thrown out: half of the 250 milliliters of milk the recipe uses\./);
+    expect((await confirmCard(servers, corrected, 2)).status).toBe(200);
+    const left = await withAdmin(async (admin) =>
+      Number((await admin.query(`SELECT sum(quantity) AS n FROM pantry.batches WHERE item_id = $1`, [milk])).rows[0].n),
+    );
+    expect(left).toBe(875);
+  });
+
+  it('refuses a share it cannot work out', async () => {
+    const codes = async (args: Record<string, unknown>) => parseErrorResult(await propose(args))?.code;
+    const half = { fraction: 0.5, of: 'stock' };
+    expect(await codes({ item: 'egg', share: half, delta: -1 })).toBe('invalid_quantity');
+    expect(await codes({ item: 'egg', share: half, reason: 'found_more' })).toBe('invalid_quantity');
+    expect(await codes({ item: 'egg', share: { fraction: 0.5, of: 'recipe' } })).toBe('needs_clarification'); // nothing cooking
+    expect(await codes({ item: 'yogurt', share: half })).toBe('no_change');
+    expect(await codes({ item: 'egg', share: { fraction: 0.01, of: 'stock' } })).toBe('invalid_quantity'); // less than one egg
+  });
+
+  it('edits a share card as the change it worked out to; an edit onto other batches replaces the card', async () => {
+    // Half of 16 eggs spans both batches; 2 eggs come from the oldest alone, another subject (§4.1).
+    const p = await ok({ item: 'egg', share: { fraction: 0.5, of: 'stock' }, reason: 'discard' });
+    const view = await internalCall(servers, `/internal/proposals/${p.proposal_id}`, undefined, 'GET');
+    expect(view.body.editable).toEqual({ type: 'amount', field: 'delta', item: 'egg', value: -8, unit: 'count' });
+    const edited = await internalCall(
+      servers,
+      `/internal/proposals/${p.proposal_id}`,
+      { base_version: 1, changes: { delta: -2 }, request_id: randomUUID() },
+      'PATCH',
+    );
+    expect(edited).toMatchObject({ status: 200, body: { version: 1, kind: 'adjust', superseded: p.proposal_id } });
+    const replacement = edited.body.proposal_id as string;
+    expect(replacement).not.toBe(p.proposal_id);
+    expect(await stored(p.proposal_id)).toMatchObject({ status: 'superseded' });
+    expect(await stored(replacement)).toMatchObject({ status: 'pending', input: { item: 'egg', delta: -2, reason: 'discard' } });
+    expect((await confirmCard(servers, p, 1)).status).toBe(409);
+    expect((await confirmCard(servers, { proposal_id: replacement }, 1)).status).toBe(200);
+    expect(await batch(eggOld)).toMatchObject({ quantity: 2 });
+  });
+
   it('applies a card edit as the new amount', async () => {
     const p = await ok({ batch_id: eggOld, delta: -1 });
     const edited = await internalCall(

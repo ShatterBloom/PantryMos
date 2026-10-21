@@ -41,7 +41,11 @@ export async function editProposal(pool: Pool, proposalId: string, body: EditBod
       }
       const input = planner.merge(proposal.input, changes.data);
       const ref = await planner.propose(tx, head.household_id, proposal.conversation_id, input);
-      return { status: 200, body: { ...ref, kind: head.kind } };
+      if (ref.proposal_id === proposalId) return { status: 200, body: { ...ref, kind: head.kind } };
+      // A new amount can change which batches an adjustment touches, and so its subject (§4.1): the
+      // edit then lands on another card, which replaces this one.
+      await tx.query(`UPDATE pantry.proposals SET status = 'superseded', updated_at = now() WHERE id = $1`, [proposalId]);
+      return { status: 200, body: { ...ref, kind: head.kind, superseded: proposalId } };
     },
   );
 }

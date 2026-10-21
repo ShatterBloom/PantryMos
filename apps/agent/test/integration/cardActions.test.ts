@@ -113,6 +113,24 @@ describe('card actions and the /api surface', () => {
     expect(readBack.speech).toMatch(/^I'll record that 2 eggs were thrown out\./);
   });
 
+  it('reads back the card an edit made when the edit lands on other batches', async () => {
+    // Two egg batches: 8 eggs span both (subject adjust:item), 2 come from the oldest alone.
+    await stockKitchen(kitchen, { egg: 4 }, 10);
+    await stockKitchen(kitchen, { egg: 12 }, 1);
+    agent.model.push(callTools(['propose_adjustment', { item: 'egg', share: { fraction: 0.5, of: 'stock' }, reason: 'discard' }]), say('OK.'));
+    await chat(agent, 'I dropped half the eggs');
+    const card = (await lastMessage(agent)).voice_prompt as { proposal_id: string };
+
+    const res = await cardAction(agent, 'PATCH', `/api/proposals/${card.proposal_id}`, { base_version: 1, changes: { delta: -2 } });
+    expect(res).toMatchObject({ status: 200, body: { superseded: card.proposal_id } });
+    const readBack = await lastMessage(agent);
+    expect(readBack).toMatchObject({
+      turn_type: 'gate',
+      speech: "I'll record that 2 eggs were thrown out. Say confirm, or tell me what to change.",
+      voice_prompt: { kind: 'proposal_confirm', proposal_id: res.body.proposal_id, version: 1 },
+    });
+  });
+
   it('replays a repeated click instead of acting twice', async () => {
     const card = await discardCard();
     const requestId = randomUUID();

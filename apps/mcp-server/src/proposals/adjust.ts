@@ -34,6 +34,15 @@ export const AdjustInputShape = {
     .optional()
     .describe('Change in base units: negative removes, positive adds. E.g. -2 for two eggs thrown out.'),
   set_quantity: z.number().min(0).max(MAX_QUANTITY).optional().describe('The counted quantity of one batch, in base units.'),
+  share: z
+    .object({
+      fraction: z.number().gt(0).max(1).describe('The part that is gone, e.g. 0.5 for half.'),
+      of: z.enum(['stock', 'recipe']).describe('"stock": of all the item in stock; "recipe": of what the meal being cooked uses.'),
+    })
+    .optional()
+    .describe(
+      'Instead of delta, when the user names a share ("I spilled half the milk"). The server works out the amount and the card says how, so the user can correct it.',
+    ),
   reason: z.enum(ADJUST_REASONS),
   note: z
     .string()
@@ -94,7 +103,8 @@ export async function proposeAdjustment(
   const item = resolveTarget(input, catalog, named);
   const active = await activeBatches(tx, householdId, today, { itemIds: [item.id] });
 
-  const plan = planAdjustment(input, { item, active, named });
+  const share = input.share ? await resolveShare(tx, householdId, input, item, active, named) : null;
+  const plan = planAdjustment(share ? { ...input, delta: -share.amount } : input, { item, active, named });
   const allocation = plan.kind === 'batches' ? plan.allocation : [];
   const new_batch =
     plan.kind === 'new_batch'
@@ -110,7 +120,7 @@ export async function proposeAdjustment(
     set_quantity: input.set_quantity === undefined ? null : roundQuantity(input.set_quantity),
     allocation,
     new_batch,
-    card: renderCard(item, input.reason, allocation, touched, new_batch, today),
+    card: renderCard(item, input.reason, allocation, touched, new_batch, today, share?.basis ?? null),
   };
   const impact = await sessionImpact(tx, householdId, item, allocation, new_batch);
   if (impact.some((i) => i.short > 0)) {
@@ -151,6 +161,60 @@ function resolveTarget(input: AdjustInput, catalog: readonly CatalogItem[], name
   return item;
 }
 
+/** A share the user named, as an amount in base units and how it was worked out ("half of the 1000 milliliters you had"). */
+async function resolveShare(
+  tx: Tx,
+  householdId: string,
+  input: AdjustInput,
+  item: CatalogItem,
+  active: readonly { quantity: number }[],
+  named: BatchView | undefined,
+): Promise<{ amount: number; basis: string }> {
+  const { fraction, of } = input.share!;
+  if (input.delta !== undefined || input.set_quantity !== undefined) {
+    throw new PantryError('invalid_quantity', 'Give a share, a change (delta) or a counted quantity, only one of them.', {
+      required: ['share', 'delta', 'set_quantity'],
+    });
+  }
+  if (input.reason === 'found_more') throw new PantryError('invalid_quantity', 'A share is for stock that is gone; give found stock as a delta.');
+
+  let whole: number;
+  if (of === 'stock') {
+    whole = named ? named.quantity : roundQuantity(active.reduce((sum, b) => sum + b.quantity, 0));
+    if (whole === 0) throw new PantryError('no_change', `There is no ${item.name} in stock.`, { quantity: 0 });
+  } else {
+    const session = await findSession(tx, householdId);
+    const cooking = session && (session.state === 'cooking' || session.state === 'awaiting_confirmation');
+    const planned = cooking ? demandByItem(session.planned_usage).get(item.id) : undefined;
+    if (planned === undefined) {
+      throw new PantryError('needs_clarification', `The meal being cooked does not use ${item.name}.`, {
+        ask: `How much ${item.name} was it?`,
+        required: ['delta'],
+      });
+    }
+    whole = planned;
+  }
+  // Counted items go whole: half of 3 eggs is 2, and the card says so.
+  const amount = item.base_unit === 'count' ? Math.round(fraction * whole) : roundQuantity(fraction * whole);
+  if (amount === 0) throw new PantryError('invalid_quantity', `That is less than one ${item.name}.`, { ask: `How much ${item.name} was it?` });
+  const ofWhat = speakQuantity(item.name, whole, item.base_unit, item.base_unit);
+  return { amount, basis: `${shareWords(fraction)} of the ${ofWhat} ${of === 'stock' ? 'you had' : 'the recipe uses'}` };
+}
+
+const SHARE_WORDS: ReadonlyArray<[number, string]> = [
+  [1, 'all'],
+  [0.5, 'half'],
+  [0.25, 'a quarter'],
+  [0.75, 'three quarters'],
+  [1 / 3, 'a third'],
+  [2 / 3, 'two thirds'],
+];
+
+/** "half", "a third", or a percentage for other fractions. */
+export function shareWords(fraction: number): string {
+  return SHARE_WORDS.find(([f]) => Math.abs(f - fraction) < 0.005)?.[1] ?? `${Math.round(fraction * 100)}%`;
+}
+
 /** §7.4: for the active session's plan, what this item's stock would be after the change. */
 async function sessionImpact(
   tx: Tx,
@@ -175,6 +239,8 @@ function renderCard(
   batches: readonly BatchView[],
   newBatch: NewBatch | null,
   today: string,
+  /** How a share became the amount; said so the user can correct it. */
+  basis: string | null,
 ): Card {
   const amount = (n: number) => speakQuantity(item.name, n, item.base_unit, item.base_unit);
   const lines = allocation.map((a) => {
@@ -186,12 +252,13 @@ function renderCard(
     lines.push(`+${amount(newBatch.quantity)} · new batch, ${label}`);
   }
   const net = allocation.reduce((sum, a) => sum + a.delta, 0) + (newBatch?.quantity ?? 0);
-  const said =
+  const change =
     reason === 'discard'
-      ? `I'll record that ${amount(-net)} ${-net === 1 ? 'was' : 'were'} thrown out.`
+      ? `I'll record that ${amount(-net)} ${-net === 1 ? 'was' : 'were'} thrown out`
       : net < 0
-        ? `I'll take ${amount(-net)} off the stock.`
-        : `I'll add ${amount(net)} to the stock${newBatch ? ' as a new batch' : ''}.`;
+        ? `I'll take ${amount(-net)} off the stock`
+        : `I'll add ${amount(net)} to the stock${newBatch ? ' as a new batch' : ''}`;
+  const said = `${change}${basis ? `: ${basis}` : ''}.`;
   return {
     title: reason === 'discard' ? `Throw out ${item.name}` : `Adjust ${item.name}`,
     lines,
