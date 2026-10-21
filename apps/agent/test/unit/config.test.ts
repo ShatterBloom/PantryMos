@@ -27,7 +27,7 @@ describe('agent loadConfig', () => {
       appOrigins: ['http://localhost:7400', 'http://127.0.0.1:7400'],
       chatRatePerMinute: 30,
       session: { secret: REQUIRED.AGENT_SESSION_SECRET, secureCookie: false, ttlSeconds: 43_200 },
-      bedrock: { region: 'ap-southeast-2', modelId: 'apac.amazon.nova-pro-v1:0', maxTokens: 1024 },
+      bedrock: { region: 'ap-southeast-2', modelId: 'global.amazon.nova-2-lite-v1:0', maxTokens: 1024 },
     });
   });
 

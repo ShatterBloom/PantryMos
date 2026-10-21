@@ -10,8 +10,11 @@ const csv = (value: unknown) =>
 
 const BedrockSchema = z.object({
   region: z.string().min(1).default('ap-southeast-2'),
-  /** An Amazon Nova model or inference profile (Converse API). */
-  modelId: z.string().min(1).default('apac.amazon.nova-pro-v1:0'),
+  /**
+   * An Amazon Nova model or inference profile (Converse API). Nova 2 Lite: in the eval it followed
+   * the tool rules far better than Nova Pro. It has no apac profile; global is the one in Sydney.
+   */
+  modelId: z.string().min(1).default('global.amazon.nova-2-lite-v1:0'),
   maxTokens: z.coerce.number().int().min(64).max(4096).default(1024),
 });
 
