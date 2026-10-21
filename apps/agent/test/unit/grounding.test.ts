@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ground, withoutRecital } from '../../src/turn/grounding.ts';
+import { ground, withoutQuestions, withoutRecital } from '../../src/turn/grounding.ts';
 
 describe('ground', () => {
   it('leaves out a claim that the stock changed when no commit backs it', () => {
@@ -112,15 +112,26 @@ describe('withoutRecital', () => {
     expect(withoutRecital('The meal would be short of milk: you can make fewer servings or use a substitute. Which would you like?', milk)).toBe(
       'The meal would be short of milk: you can make fewer servings or use a substitute.',
     );
+    // Talk of confirming, and a promise nobody keeps: a confirm gets the app's templated reply (eval G4).
+    expect(
+      withoutRecital(
+        "Throwing out half the milk means we now have less than the recipe needs. You'll see a card asking you to confirm. After you confirm, I'll tell you what to do next.",
+        milk,
+      ),
+    ).toBe('Throwing out half the milk means we now have less than the recipe needs.');
   });
 
   it('keeps what the card does not say', () => {
-    for (const s of [
-      'That leaves 75 ml, less than the 125 ml the recipe needs.',
-      'Sorry about the milk.',
-      "Once you confirm, I'll look at what's left.",
-    ]) {
+    for (const s of ['That leaves 75 ml, less than the 125 ml the recipe needs.', 'Sorry about the milk.']) {
       expect(withoutRecital(s, milk)).toBe(s);
     }
+  });
+});
+
+describe('withoutQuestions', () => {
+  it('leaves out questions and keeps the rest', () => {
+    expect(withoutQuestions('I started the stir-fry for 2 servings. What would you like to do next?')).toBe('I started the stir-fry for 2 servings.');
+    expect(withoutQuestions('Ready? Go.')).toBe('Go.');
+    expect(withoutQuestions('')).toBe('');
   });
 });

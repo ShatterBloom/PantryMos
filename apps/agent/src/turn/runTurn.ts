@@ -13,7 +13,7 @@ import { closeOpenWindows } from '../store/windows.ts';
 import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
-import { ground, withoutRecital } from './grounding.ts';
+import { ground, withoutQuestions, withoutRecital } from './grounding.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 import { eventBlock, fallbackSpeech, NOT_CHANGED, TURN_FAILED, timerOffer } from './speech.ts';
 
@@ -316,20 +316,24 @@ async function finishTurn(
     }
   }
 
-  if (stepSpeech) speech = `${speech} ${stepSpeech}`.trim();
+  // What the app says follows the model's speech: the step, then the card's read-back or the timer offer.
   let voicePrompt: VoicePrompt | null = null;
+  let question: string | null = null;
   if (proposal) {
     cards.push({ type: 'proposal', ...pick(proposal, ['proposal_id', 'version', 'kind', 'card', 'expires_at']) });
-    const readback = (proposal.card as { readback_text: string }).readback_text;
+    question = (proposal.card as { readback_text: string }).readback_text;
     // The model may repeat or paraphrase the read-back from the tool result; it is said once, last (§8.5).
-    speech = `${withoutRecital(speech, readback)} ${readback}`.trim();
+    speech = withoutRecital(speech, question);
     voicePrompt = { kind: 'proposal_confirm', proposal_id: proposal.proposal_id as string, version: proposal.version as number };
   }
   // A card read-back takes precedence over a timer offer in the same message (§8.2).
   if (!voicePrompt && offer?.kind === 'timer_offer' && !(await stepHasTimer(pool, conversationId, offer.session_id, offer.step_no))) {
-    speech = `${speech} ${timerOffer(offer.seconds)}`.trim();
+    // The offer is the one question the user answers (eval G5: "What would you like to do next?" before it).
+    speech = withoutQuestions(speech);
+    question = timerOffer(offer.seconds);
     voicePrompt = offer;
   }
+  speech = [speech, stepSpeech, question].filter(Boolean).join(' ');
   // The model said nothing and the app had nothing to add: never deliver a silent message.
   if (speech === '') speech = trigger.type === 'user' ? TURN_FAILED : trigger.events.map(fallbackSpeech).join(' ');
 

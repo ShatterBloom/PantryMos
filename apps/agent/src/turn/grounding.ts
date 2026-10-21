@@ -63,25 +63,36 @@ export function ground(text: string, { committed, timerStarted = false }: { comm
   return out;
 }
 
-/** "Say **confirm** to apply this", "I need you to say "confirm"…": the read-back asks that itself. */
-const ASKS_CONFIRM = /\b(?:say|tap|click|press|hit)\b[^.!?]*\bconfirm\b/i;
+/**
+ * "Say **confirm** to apply this", "You'll see a card asking you to confirm": the read-back asks
+ * that itself. "After you confirm, I'll tell you what to do next" promises what nobody says: a
+ * confirm gets the app's templated reply (eval G4).
+ */
+const CONFIRM = /\bconfirm/i;
 
 const NUMBER = /\d+(?:\.\d+)?/g;
 
 /**
  * The model's speech less what the card's read-back, appended after it, says again or asks itself
- * (§8.5): the read-back, asks to confirm, sentences that only restate the card's amounts ("It will
- * deduct 3 eggs and 2 tomatoes", eval G4, P1), and any question, as the read-back ends with the one
- * the user answers. A sentence with an amount the card lacks, such as a shortfall, stays.
+ * (§8.5): the read-back, any talk of confirming, sentences that only restate the card's amounts
+ * ("It will deduct 3 eggs and 2 tomatoes", eval G4, P1), and any question, as the read-back ends
+ * with the one the user answers. A sentence with an amount the card lacks, such as a shortfall, stays.
  */
 export function withoutRecital(text: string, readback: string): string {
   const onCard = new Set(readback.match(NUMBER) ?? []);
-  return sentences(text.split(readback).join(' '))
+  return sentences(withoutQuestions(text.split(readback).join(' ')))
     .filter((s) => {
-      if (ASKS_CONFIRM.test(s) || s.endsWith('?')) return false;
+      if (CONFIRM.test(s)) return false;
       const numbers = s.match(NUMBER) ?? [];
       return numbers.length === 0 || !numbers.every((n) => onCard.has(n));
     })
+    .join(' ');
+}
+
+/** The model's speech less its questions, when the app asks the one the user answers. */
+export function withoutQuestions(text: string): string {
+  return sentences(text)
+    .filter((s) => !s.endsWith('?'))
     .join(' ');
 }
 
