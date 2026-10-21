@@ -10,7 +10,12 @@ const CLAIMS: readonly RegExp[] = [
   new RegExp(`\\b(?:I|I've|I have|we've|we have)\\s+(?:just\\s+|already\\s+|now\\s+)?(?:${DONE})\\b(?!\\s+(?:a|the|this|that|your)\\s+card)`, 'i'),
   new RegExp(`\\b(?:has|have)\\s+(?:now\\s+|already\\s+)?been\\s+(?:${DONE})\\b`, 'i'),
   /\b(?:is|are)\s+now\s+in\s+(?:your\s+)?(?:stock|inventory|pantry)\b/i,
+  // "Saved: 20 grams of butter, …": the app's own commit wording, copied before any commit (eval P7).
+  /^(?:saved|recorded|deducted|logged)\b/i,
 ];
+
+/** The shopping list changes when its tool runs, with no card: saying so is true. */
+const SHOPPING_LIST = /\bshopping\s+list\b/i;
 
 /** A sentence that says what will or would happen, or what has not, claims nothing. */
 const HEDGED = /\b(?:not|nothing|n't|yet|until|once|if|when you|after you)\b/i;
@@ -46,7 +51,7 @@ export function ground(text: string, { committed, timerStarted = false }: { comm
     const plain = sentence.replace(/[‘’]/g, "'");
     const asserts = !HEDGED.test(plain) && !plain.endsWith('?');
     if (STEP.test(plain)) out.steps.push(sentence);
-    else if (asserts && !committed && CLAIMS.some((c) => c.test(plain))) out.claims.push(sentence);
+    else if (asserts && !committed && !SHOPPING_LIST.test(plain) && CLAIMS.some((c) => c.test(plain))) out.claims.push(sentence);
     else if (asserts && !timerStarted && TIMER_CLAIMS.some((c) => c.test(plain))) out.claims.push(sentence);
     else kept.push(sentence);
   }

@@ -15,6 +15,9 @@ describe('ground', () => {
     });
     expect(ground('I added 6 eggs bought today with no package date.', { committed: false }).text).toBe('');
     expect(ground('The eggs are now in your stock.', { committed: false }).text).toBe('');
+    // The app's commit wording, copied before the user confirmed (eval P7).
+    expect(ground('Saved: 20 grams of butter and 1 onion.', { committed: false }).text).toBe('');
+    expect(ground('Recorded. Anything else?', { committed: false }).text).toBe('Anything else?');
   });
 
   it('keeps such a claim after a commit, and keeps what only proposes, asks or hedges', () => {
@@ -28,6 +31,9 @@ describe('ground', () => {
       "I've made a card for that.",
       "I've added a card for the eggs.",
       'I started the tomato egg stir-fry for 2 servings.',
+      // The shopping list changes with no card.
+      "I've added milk to your shopping list.",
+      'Added milk.',
     ]) {
       expect(ground(s, { committed: false })).toEqual({ text: s, claims: [], steps: [] });
     }
