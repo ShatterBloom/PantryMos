@@ -36,12 +36,12 @@ export const AdjustInputShape = {
   set_quantity: z.number().min(0).max(MAX_QUANTITY).optional().describe('The counted quantity of one batch, in base units.'),
   share: z
     .object({
-      fraction: z.number().gt(0).max(1).describe('The part that is gone, e.g. 0.5 for half.'),
+      fraction: z.number().gt(0).max(1).describe('The part named: 1, 0.5, 1/3, 2/3, 0.25 or 0.75 (all, half, a third, two thirds, a quarter, three quarters).'),
       of: z.enum(['stock', 'recipe']).describe('"stock": of all the item in stock; "recipe": of what the meal being cooked uses.'),
     })
     .optional()
     .describe(
-      'Instead of delta, when the user names a share ("I spilled half the milk"). The server works out the amount and the card says how, so the user can correct it.',
+      'Instead of delta, only when the user names a share ("I spilled half the milk"); an amount the user said ("200 ml") is a delta. The server works out the amount and the card says how, so the user can correct it.',
     ),
   reason: z.enum(ADJUST_REASONS),
   note: z
@@ -171,6 +171,13 @@ async function resolveShare(
   named: BatchView | undefined,
 ): Promise<{ amount: number; basis: string }> {
   const { fraction, of } = input.share!;
+  // A share is a part people name; 0.2 is the model turning "200 ml" of a litre into one (eval P4).
+  const words = shareWords(fraction);
+  if (words === undefined) {
+    throw new PantryError('invalid_quantity', 'A share is a part the user named, like half or a third. Give an amount the user said as delta.', {
+      required: ['delta'],
+    });
+  }
   if (input.delta !== undefined || input.set_quantity !== undefined) {
     throw new PantryError('invalid_quantity', 'Give a share, a change (delta) or a counted quantity, only one of them.', {
       required: ['share', 'delta', 'set_quantity'],
@@ -198,7 +205,7 @@ async function resolveShare(
   const amount = item.base_unit === 'count' ? Math.round(fraction * whole) : roundQuantity(fraction * whole);
   if (amount === 0) throw new PantryError('invalid_quantity', `That is less than one ${item.name}.`, { ask: `How much ${item.name} was it?` });
   const ofWhat = speakQuantity(item.name, whole, item.base_unit, item.base_unit);
-  return { amount, basis: `${shareWords(fraction)} of the ${ofWhat} ${of === 'stock' ? 'you had' : 'the recipe uses'}` };
+  return { amount, basis: `${words} of the ${ofWhat} ${of === 'stock' ? 'you had' : 'the recipe uses'}` };
 }
 
 const SHARE_WORDS: ReadonlyArray<[number, string]> = [
@@ -210,9 +217,9 @@ const SHARE_WORDS: ReadonlyArray<[number, string]> = [
   [2 / 3, 'two thirds'],
 ];
 
-/** "half", "a third", or a percentage for other fractions. */
-export function shareWords(fraction: number): string {
-  return SHARE_WORDS.find(([f]) => Math.abs(f - fraction) < 0.005)?.[1] ?? `${Math.round(fraction * 100)}%`;
+/** The words for a share people name ("half", "a third"), or undefined for any other fraction. */
+function shareWords(fraction: number): string | undefined {
+  return SHARE_WORDS.find(([f]) => Math.abs(f - fraction) < 0.005)?.[1];
 }
 
 /** §7.4: for the active session's plan, what this item's stock would be after the change. */

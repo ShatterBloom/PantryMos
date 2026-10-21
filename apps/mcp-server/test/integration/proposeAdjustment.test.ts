@@ -178,6 +178,8 @@ describe('propose_adjustment', () => {
     // Counted items go whole: a third of 16 is 5.
     const third = await ok({ batch_id: eggNew, share: { fraction: 1 / 3, of: 'stock' }, reason: 'discard' });
     expect(third.card.readback_text).toMatch(/^I'll record that 4 eggs were thrown out: a third of the 12 eggs you had\./);
+    const quarter = await ok({ batch_id: eggOld, share: { fraction: 0.25, of: 'stock' }, reason: 'discard' });
+    expect(quarter.card.readback_text).toMatch(/^I'll record that 1 egg was thrown out: a quarter of the 4 eggs you had\./);
     expect((await stored(p.proposal_id)).input).toMatchObject({ share: { fraction: 0.5, of: 'stock' } });
   });
 
@@ -204,7 +206,10 @@ describe('propose_adjustment', () => {
     expect(await codes({ item: 'egg', share: half, reason: 'found_more' })).toBe('invalid_quantity');
     expect(await codes({ item: 'egg', share: { fraction: 0.5, of: 'recipe' } })).toBe('needs_clarification'); // nothing cooking
     expect(await codes({ item: 'yogurt', share: half })).toBe('no_change');
-    expect(await codes({ item: 'egg', share: { fraction: 0.01, of: 'stock' } })).toBe('invalid_quantity'); // less than one egg
+    await stockKitchen(kitchen, { tomato: 1 });
+    expect(await codes({ item: 'tomato', share: { fraction: 0.25, of: 'stock' } })).toBe('invalid_quantity'); // less than one tomato
+    // "200 ml" of a litre is an amount, not a share someone names (eval P4).
+    expect(await codes({ item: 'egg', share: { fraction: 0.2, of: 'stock' } })).toBe('invalid_quantity');
   });
 
   it('edits a share card as the change it worked out to; an edit onto other batches replaces the card', async () => {
