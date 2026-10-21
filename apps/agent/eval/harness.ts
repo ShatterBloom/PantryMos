@@ -226,8 +226,11 @@ export interface CaseResult {
 
 export const passed = (r: CaseResult) => r.aborted === null && Object.values(r.checks).every((c) => c.verdict === 'pass');
 
-/** "I'll record…", "it will be added", "say confirm": a sentence that proposes claims nothing done. */
-const PROPOSES = /\b(?:I'll|I will|will|would|shall|going to)\b|\bsay\s+["“]?confirm/i;
+/**
+ * "I'll record…", "it will be added", "say confirm", "the card shows…": a sentence that proposes, or
+ * describes a card, claims nothing done.
+ */
+const PROPOSES = /\b(?:I'll|I will|will|would|shall|going to|card)\b|\bsay\s+["“]?confirm/i;
 
 /**
  * What a message claims: its speech less the read-back of each card it carries, and less any

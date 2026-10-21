@@ -56,7 +56,7 @@ describe('eval harness', () => {
     // proposes, it claims nothing), the templated gate reply included.
     expect(r.turns[0]!.replies).toEqual(["Here is a card for 6 eggs. I'll add 6 eggs. Say confirm, or tell me what to change."]);
     expect(r.turns[1]!).toMatchObject({ replies: ["I'll add 12 eggs. Say confirm, or tell me what to change."], claimable: [] });
-    expect(extractor.asked).toEqual([['Here is a card for 6 eggs.', 'Done — added to your stock.']]);
+    expect(extractor.asked).toEqual([['Done — added to your stock.']]); // "Here is a card…" proposes
     expect(r.latency.modelCalls).toBe(2);
   });
 
