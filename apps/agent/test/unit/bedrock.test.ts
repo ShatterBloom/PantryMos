@@ -49,6 +49,13 @@ describe('Bedrock Converse mapping', () => {
       content: [{ text: 'Let me check.' }, { toolUse: { toolUseId: 't9', name: 'expiring_soon', input: {} } }],
     });
     expect(fromConverseOutput({ stopReason: undefined, output: undefined } as never)).toEqual({ stopReason: 'end_turn', content: [] });
+    // Nova's chain of thought with no tags, flagged by Bedrock (eval P1): never said.
+    expect(
+      fromConverseOutput({
+        stopReason: 'malformed_model_output',
+        output: { message: { role: 'assistant', content: [{ text: 'Okay, the user is cooking the stir-fry. The user said "next", so…' }] } },
+      }),
+    ).toEqual({ stopReason: 'malformed_model_output', content: [] });
     expect(fromConverseOutput({ stopReason: 'end_turn', output: undefined, usage: { inputTokens: 900, outputTokens: 40, totalTokens: 940 } })).toEqual({
       stopReason: 'end_turn',
       content: [],
