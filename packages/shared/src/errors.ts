@@ -20,6 +20,7 @@ export const ERROR_CODES = [
   'not_in_plan',
   'invalid_substitution',
   'substitution_required',
+  'needs_choice',
   'no_completed_session',
   'ambiguous_session',
   'ambiguous_batch',

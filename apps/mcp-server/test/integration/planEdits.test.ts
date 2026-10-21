@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
+  addScallionSubstitute,
   adjustStock,
   callWrite,
   connectMcpClient,
@@ -13,6 +14,7 @@ import {
   mcpTestConfig,
   PASTA_STOCK,
   startPasta,
+  stockKitchen,
   withAdmin,
 } from '../../../../test/fixtures.ts';
 
@@ -107,6 +109,18 @@ describe('plan edits while cooking', () => {
       const { out } = await call('substitute', { from_item: 'scallion', to_item: 'onion' });
       expect(out.changed).toBe(false);
       expect((await sessionRow(sessionId)).state_version).toBe(2);
+    });
+
+    it('swaps to one of several in-stock substitutes only when the user chose it (§8.4)', async () => {
+      await addScallionSubstitute(kitchen);
+      await stockKitchen(kitchen, { 'bell pepper': 2 });
+      await startWithoutScallions();
+      expect((await call('substitute', { from_item: 'scallion', to_item: 'onion' })).error).toMatchObject({
+        code: 'needs_choice',
+        options: ['onion', 'bell pepper'],
+        ask: 'Use onion or bell pepper instead of scallion?',
+      });
+      expect((await call('substitute', { from_item: 'scallion', to_item: 'onion', chosen_by_user: true })).out.changed).toBe(true);
     });
 
     it('refuses substitutes the recipe does not allow, ones not in stock, and unknown ingredients', async () => {

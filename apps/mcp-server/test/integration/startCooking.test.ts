@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
+  addScallionSubstitute,
   adjustStock,
   callWrite,
   connectMcpClient,
@@ -104,6 +105,20 @@ describe('start_cooking and get_session', () => {
       origin: 'substitute',
       replaces_item_id: kitchen.items.scallion,
     });
+  });
+
+  it('starts with one of several substitutes only when the user chose it (G3)', async () => {
+    await stockKitchen(kitchen, { ...PASTA_STOCK, onion: 2, 'bell pepper': 2 });
+    await addScallionSubstitute(kitchen);
+    const onion = { from_item: 'scallion', to_item: 'onion' };
+    expect(parseErrorResult(await start({ recipe_name: 'creamy spinach pasta', substitutions: [onion] }))).toMatchObject({
+      code: 'needs_choice',
+      from_item: 'scallion',
+      options: ['onion', 'bell pepper'],
+      ask: 'Use onion or bell pepper instead of scallion?',
+    });
+    const res = await start({ recipe_name: 'creamy spinach pasta', substitutions: [{ ...onion, chosen_by_user: true }] });
+    expect((res.structuredContent as unknown as Started).applied_substitutions).toEqual([{ from_item: 'scallion', to_item: 'onion', quantity: 1 }]);
   });
 
   it('rejects a substitution the recipe does not define, or one stock cannot cover (R28)', async () => {

@@ -5,7 +5,7 @@ import { loadCatalog } from '../../db/catalog.ts';
 import { loadIngredients, loadRecipes, loadSteps } from '../../db/recipes.ts';
 import { availableByItem, itemInfo } from '../../db/sessions.ts';
 import type { Tx } from '../../db/tx.ts';
-import { analyzeRecipe, requireMakeable } from '../../domain/cooking.ts';
+import { analyzeRecipe, requireChoice, requireMakeable } from '../../domain/cooking.ts';
 import { PantryError } from '../../domain/errors.ts';
 import { type CatalogItem, findItem } from '../../domain/items.ts';
 import { resolveRecipe } from '../../domain/recipes.ts';
@@ -26,7 +26,7 @@ export function registerStartCooking(server: McpServer, ctx: ToolContext): void 
         recipe_name: NameInput.describe('Recipe name, e.g. "creamy spinach pasta".'),
         servings: z.number().int().min(1).max(12).optional().describe('How many people; defaults to the recipe servings.'),
         substitutions: z
-          .array(z.object({ from_item: NameInput, to_item: NameInput }))
+          .array(z.object({ from_item: NameInput, to_item: NameInput, chosen_by_user: z.boolean().optional().describe('true only when the user named this substitute; the bundled app sets it from what the user said.'), }))
           .max(10)
           .optional(),
       },
@@ -52,14 +52,23 @@ export function registerStartCooking(server: McpServer, ctx: ToolContext): void 
           from_item_id: itemIdFor(s.from_item, catalog),
           to_item_id: itemIdFor(s.to_item, catalog),
         }));
-        const analysis = analyzeRecipe({
+        const base = {
           ingredients: await loadIngredients(tx, recipe.id),
           recipeServings: recipe.servings,
           servings,
           available: await availableByItem(tx, householdId),
-          substitutions,
           items,
-        });
+        };
+        if (substitutions.length > 0) {
+          // What would be needed without them: an ingredient with several options is the user's pick.
+          const needed = analyzeRecipe({ ...base, substitutions: [] }).substitutions_needed;
+          substitutions.forEach((s, i) => {
+            const need = needed.find((n) => n.from_item_id === s.from_item_id);
+            const names = (need?.options ?? []).map((o) => items.get(o.to_item_id)!.name);
+            requireChoice(items.get(s.from_item_id)!.name, names, args.substitutions![i]!.chosen_by_user);
+          });
+        }
+        const analysis = analyzeRecipe({ ...base, substitutions });
         const plannedUsage = requireMakeable(analysis, items);
         const steps = await loadSteps(tx, recipe.id);
 

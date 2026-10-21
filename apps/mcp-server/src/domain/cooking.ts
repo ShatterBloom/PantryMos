@@ -169,6 +169,19 @@ function withoutIngredient(plan: readonly PlannedLine[], fromItemId: string): Pl
  * In-stock substitutes for one ingredient of an active plan (§7.4 substitute without to_item):
  * author-defined, scaled to the session's servings, and covered by stock after the rest of the plan.
  */
+/**
+ * §8.4: the model picks a substitute on its own only when there is exactly one in stock; with
+ * several, the user names one (`chosen`). In the eval Nova picked one of two and said "as requested".
+ */
+export function requireChoice(fromName: string, optionNames: readonly string[], chosen: boolean | undefined): void {
+  if (optionNames.length < 2 || chosen === true) return;
+  throw new PantryError('needs_choice', `There is more than one substitute for ${fromName}.`, {
+    from_item: fromName,
+    options: [...optionNames],
+    ask: `Use ${listOr([...optionNames])} instead of ${fromName}?`,
+  });
+}
+
 export function substituteOptions(
   plan: readonly PlannedLine[],
   ingredient: Ingredient,

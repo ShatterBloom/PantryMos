@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadCatalog } from '../../db/catalog.ts';
 import { loadIngredients, loadRecipe } from '../../db/recipes.ts';
 import { availableByItem, itemInfo, lockActiveSession, updatePlan } from '../../db/sessions.ts';
-import { applySubstitute, substituteOptions } from '../../domain/cooking.ts';
+import { applySubstitute, requireChoice, substituteOptions } from '../../domain/cooking.ts';
 import { PantryError } from '../../domain/errors.ts';
 import { findItem } from '../../domain/items.ts';
 import { scaleQuantity } from '../../domain/recipes.ts';
@@ -25,6 +25,7 @@ export function registerSubstitute(server: McpServer, ctx: ToolContext): void {
       inputSchema: {
         from_item: NameInput.describe('The ingredient to replace, e.g. "scallions".'),
         to_item: NameInput.optional().describe('The substitute the user chose, e.g. "onion".'),
+        chosen_by_user: z.boolean().optional().describe('true only when the user named this substitute; the bundled app sets it from what the user said.'),
         session_id: z.uuid().optional(),
       },
       outputSchema: {
@@ -86,6 +87,7 @@ export function registerSubstitute(server: McpServer, ctx: ToolContext): void {
           });
         }
 
+        requireChoice(from.name, optionsOut.map((o) => o.item), args.chosen_by_user);
         const plan = applySubstitute(session.planned_usage, from.id, option);
         const changed = await updatePlan(tx, session, plan);
         return {

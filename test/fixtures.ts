@@ -298,6 +298,28 @@ export const PASTA_STOCK: Record<string, number> = {
   scallion: 4,
 };
 
+/**
+ * Gives this kitchen's pasta a second substitute for scallion, bell pepper beside onion, so that
+ * with both in stock the user has to choose. The seed gives scallion one.
+ */
+export async function addScallionSubstitute(kitchen: DemoKitchen): Promise<void> {
+  await withAdmin((admin) =>
+    admin.query(
+      `UPDATE pantry.recipe_ingredients ri SET substitutes = $3::jsonb
+         FROM pantry.recipes r
+        WHERE ri.recipe_id = r.id AND r.household_id = $1 AND r.name = 'creamy spinach pasta' AND ri.item_id = $2`,
+      [
+        kitchen.householdId,
+        kitchen.items.scallion,
+        JSON.stringify([
+          { item_id: kitchen.items.onion, ratio: 0.5 },
+          { item_id: kitchen.items['bell pepper'], ratio: 0.5 },
+        ]),
+      ],
+    ),
+  );
+}
+
 /** Stocks the kitchen for the demo dish and starts it; returns the session id. */
 export async function startPasta(
   kitchen: DemoKitchen,
