@@ -48,6 +48,22 @@ async function nextUntil(ctx: CaseContext, step: number): Promise<void> {
   }
 }
 
+/**
+ * The user hears the card and, until it says what they meant (`meant`, on its read-back), says
+ * `correction`; then confirms it. Each correction is a new version read back again.
+ */
+async function confirmWhenRight(ctx: CaseContext, meant: RegExp, correction: string, tries = 3): Promise<void> {
+  for (let i = 0; i <= tries; i++) {
+    const card = await ctx.card();
+    if (meant.test(card.card.readback_text)) {
+      await ctx.answer('yes');
+      return;
+    }
+    if (i < tries) await ctx.answer(correction);
+  }
+  throw new CaseAborted(`after ${tries} corrections the card still did not say ${meant}`);
+}
+
 /** Mos's last proposal card, after `n` more tries of `say` when the model asked something first. */
 async function untilCard(ctx: CaseContext, retries: Array<() => Promise<unknown>>) {
   for (const retry of [async () => {}, ...retries]) {
@@ -225,7 +241,7 @@ export const CASES: readonly EvalCase[] = [
       await ctx.answer('yes');
       await ctx.fireTimers();
       await ctx.say('I spilled half the milk', 'voice');
-      await ctx.answer('yes');
+      await confirmWhenRight(ctx, /\b500 milliliters of milk\b/, 'No, I mean half of all the milk I have');
       await nextUntil(ctx, 6);
       await ctx.answer('next');
       await ctx.answer('yes');
@@ -235,7 +251,7 @@ export const CASES: readonly EvalCase[] = [
       forbid: ['propose_intake'],
       args: [
         { tool: 'start_cooking', args: { servings: 3 } },
-        { tool: 'propose_adjustment', args: { reason: 'discard' } },
+        { tool: 'propose_adjustment', accepted: true, args: { reason: 'discard', share: { fraction: 0.5, of: 'stock' } } },
       ],
       db: { stock: { ...PASTA_USED, milk: -750 }, operations: ['adjust', 'consume'] },
     },
@@ -308,8 +324,24 @@ export const CASES: readonly EvalCase[] = [
     },
     expect: {
       tools: ['start_cooking', 'propose_adjustment'],
-      args: [{ tool: 'propose_adjustment', accepted: true, args: { reason: 'discard' } }],
+      args: [{ tool: 'propose_adjustment', accepted: true, args: { reason: 'discard', share: { fraction: 0.5 } } }],
       db: NONE,
+    },
+  },
+  {
+    id: 'P10',
+    title: 'A share the card got wrong is corrected until it is right',
+    stock: PASTA_STOCK,
+    async run(ctx) {
+      await ctx.say("Let's cook the creamy spinach pasta for three");
+      // The user means half of the 250 ml the pasta uses, not of the litre in the fridge.
+      await ctx.say('I spilled half the milk', 'voice');
+      await confirmWhenRight(ctx, /\b125 milliliters of milk\b/, 'No, half of the milk the recipe needs, not of all my milk');
+    },
+    expect: {
+      tools: ['start_cooking', 'propose_adjustment'],
+      args: [{ tool: 'propose_adjustment', accepted: true, args: { reason: 'discard', share: { fraction: 0.5, of: 'recipe' } } }],
+      db: { stock: { milk: -125 }, operations: ['adjust'] },
     },
   },
   {
