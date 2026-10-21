@@ -127,7 +127,7 @@ async function answerCard(
   });
   if (res.status === 200) {
     const kind = res.body.kind as string;
-    return { speech: confirmed(kind), events: [event('proposal_committed', 'committed', { kind, operation_id: res.body.operation_id })], prompt: null };
+    return { speech: confirmed(kind), events: [event('proposal_committed', 'committed', { kind, operation_id: res.body.operation_id, summary: res.body.summary })], prompt: null };
   }
   if (res.body.code === 'stale_state') {
     const stale = event('proposal_stale', 'stale', { reason: res.body.reason });

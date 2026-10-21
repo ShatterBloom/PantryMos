@@ -105,6 +105,13 @@ describe('ConfirmGate', () => {
     expect(await confirmations()).toEqual([{ version: 1, channel: 'voice_rule', utterance: 'yes', outcome: 'committed' }]);
     expect(await lastMessage(agent)).toMatchObject({ turn_type: 'gate', speech: 'Done — added to your stock.', voice_prompt: null });
     expect(await events()).toEqual([{ kind: 'proposal_committed', triggers_turn: false }]);
+    // The next user turn tells the model what was saved.
+    const [committed] = await agentRows<{ payload: { summary: unknown } }>(
+      agent,
+      `SELECT payload FROM agent.app_events WHERE conversation_id = $1 AND kind = 'proposal_committed'`,
+      [agent.conversationId],
+    );
+    expect(committed!.payload.summary).toEqual({ lines: [{ item: 'egg', quantity: 6, unit: 'count' }], new_items: [], new_conversions: [] });
   });
 
   it('VC2: after an edit to v2, "confirm" before v2 is acked re-reads v2 instead of committing v1', async () => {

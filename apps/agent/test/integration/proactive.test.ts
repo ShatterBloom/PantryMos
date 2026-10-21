@@ -291,9 +291,27 @@ describe('proactive turns', () => {
     agent.model.push(say('Saved your 6 eggs.'));
     await tick();
     expect(agent.model.requests.at(-1)!.messages.at(-1)!.content).toEqual([
-      { text: `[app event] proposal ${card.proposal_id} v1 (intake) committed.` },
+      { text: `[app event] proposal ${card.proposal_id} v1 (intake) committed. Saved: ${JSON.stringify(res.body.summary)}` },
     ]);
     expect((await proactive()).map((m) => m.speech)).toEqual(['Saved your 6 eggs.']);
+  });
+
+  it('tells the model the amounts of the version that was committed, not of an earlier card', async () => {
+    agent.model.push(callTools(['propose_intake', { items: [{ name: 'egg', quantity: 2 }] }]), say('OK.'));
+    await chat(agent, 'I bought 2 eggs');
+    const card = (await lastMessage(agent)).voice_prompt as { proposal_id: string };
+    const edited = await cardAction(agent, 'PATCH', `/api/proposals/${card.proposal_id}`, {
+      base_version: 1,
+      changes: { items: [{ name: 'egg', quantity: 3 }] },
+    });
+    expect(edited.status).toBe(200);
+
+    const res = await cardAction(agent, 'POST', `/api/proposals/${card.proposal_id}/confirm`, { version: 2 });
+    expect(res).toMatchObject({ status: 200, body: { version: 2, summary: { lines: [{ item: 'egg', quantity: 3 }] } } });
+    agent.model.push(say('Saved your 3 eggs.'));
+    await tick();
+    const [block] = agent.model.requests.at(-1)!.messages.at(-1)!.content as Array<{ text: string }>;
+    expect(block!.text).toBe(`[app event] proposal ${card.proposal_id} v2 (intake) committed. Saved: ${JSON.stringify(res.body.summary)}`);
   });
 
   it("leaves another household's timers and events to that household's agent", async () => {

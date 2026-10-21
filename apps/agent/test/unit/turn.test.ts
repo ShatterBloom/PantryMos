@@ -60,4 +60,11 @@ describe('speech templates', () => {
       'Say confirm when you are ready.',
     ]);
   });
+
+  it('puts what a commit saved into its [app event] block', () => {
+    const summary = { lines: [{ item: 'egg', quantity: 3, unit: 'pcs' }], new_items: [], new_conversions: [] };
+    expect(eventBlock({ kind: 'proposal_committed', payload: { proposal_id: 'p1', version: 2, kind: 'intake', summary } })).toBe(
+      '[app event] proposal p1 v2 (intake) committed. Saved: {"lines":[{"item":"egg","quantity":3,"unit":"pcs"}],"new_items":[],"new_conversions":[]}',
+    );
+  });
 });

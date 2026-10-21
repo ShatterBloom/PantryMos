@@ -34,8 +34,12 @@ export function eventBlock(e: Pick<AppEvent, 'kind' | 'payload'>): string {
   switch (e.kind) {
     case 'timer_fired':
       return `[app event] timer "${p.label}" finished${p.step_no ? ` (recipe step ${p.step_no})` : ''}.`;
-    case 'proposal_committed':
-      return `[app event] proposal ${p.proposal_id} v${p.version} (${p.kind}) committed.`;
+    case 'proposal_committed': {
+      // What was saved, from the server's commit result: the ack must say these amounts, not ones
+      // remembered from an earlier version of the card.
+      const saved = e.payload.summary === undefined ? '' : ` Saved: ${JSON.stringify(e.payload.summary)}`;
+      return `[app event] proposal ${p.proposal_id} v${p.version} (${p.kind}) committed.${saved}`;
+    }
     case 'proposal_stale':
       return `[app event] proposal ${p.proposal_id} v${p.version} (${p.kind}) was not committed: things changed since it was made (${p.reason}).`;
     case 'proposal_rejected':

@@ -189,7 +189,12 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const outcomeEvent = (view: ProposalView, version: number, res: InternalResponse) => {
     const base = { payload: { proposal_id: view.proposal_id, version, kind: view.kind } };
     if (res.status === 200) {
-      return { ...base, kind: 'proposal_committed' as const, dedupeKey: `proposal:${view.proposal_id}:v${version}:committed`, triggersTurn: true };
+      return {
+        kind: 'proposal_committed' as const,
+        payload: { ...base.payload, summary: res.body.summary },
+        dedupeKey: `proposal:${view.proposal_id}:v${version}:committed`,
+        triggersTurn: true,
+      };
     }
     if (res.body.code === 'stale_state') {
       return {
