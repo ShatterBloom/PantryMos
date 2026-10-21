@@ -2,7 +2,7 @@
 // Each script plays the user; the expectations are what must hold whatever Mos says on the way.
 // G7, G9, G11 and G12 test the turn machinery, not the model; they run with a scripted model in
 // the integration suite (proactive.test.ts, resume.test.ts).
-import { createBatch, eatMeal, householdToday, PASTA_STOCK, stockKitchen, withAdmin } from '../../../test/fixtures.ts';
+import { addScallionSubstitute, createBatch, eatMeal, householdToday, PASTA_STOCK, stockKitchen } from '../../../test/fixtures.ts';
 import { ABSENT } from './checks.ts';
 import { CaseAborted, type CaseContext, type EvalCase, type SetupEnv } from './harness.ts';
 
@@ -292,26 +292,22 @@ export const CASES: readonly EvalCase[] = [
     title: 'The same with two possible substitutes: Mos asks first',
     stock: async (env) => {
       await expiringSpinach({ ...PASTA_NO_SCALLION, onion: 2, 'bell pepper': 2 })(env);
-      // The seed gives scallion one substitute; this kitchen's pasta recipe gives it two.
-      await withAdmin((admin) =>
-        admin.query(
-          `UPDATE pantry.recipe_ingredients ri SET substitutes = $3::jsonb
-             FROM pantry.recipes r WHERE ri.recipe_id = r.id AND r.household_id = $1 AND r.name = 'creamy spinach pasta' AND ri.item_id = $2`,
-          [
-            env.kitchen.householdId,
-            env.kitchen.items.scallion,
-            JSON.stringify([
-              { item_id: env.kitchen.items.onion, ratio: 0.5 },
-              { item_id: env.kitchen.items['bell pepper'], ratio: 0.5 },
-            ]),
-          ],
-        ),
-      );
+      await addScallionSubstitute(env.kitchen);
     },
     async run(ctx) {
-      await ctx.say("Make dinner for three using whatever's about to go bad");
+      const [asked] = await ctx.say("Make dinner for three using whatever's about to go bad");
+      // Nothing starts until the user picks; a start_cooking the server refused with needs_choice is fine.
+      ctx.expect('db', (await ctx.session()) === undefined, 'cooking started before the user chose a substitute');
+      ctx.expect('tools', /onion/i.test(asked?.speech ?? '') && /bell pepper/i.test(asked?.speech ?? ''), 'Mos did not offer both substitutes');
+      await ctx.say("Let's use the onion");
+      ctx.expect('db', (await ctx.session())?.state === 'cooking', 'cooking did not start after the user chose');
     },
-    expect: { tools: ['expiring_soon', 'suggest_recipes'], forbid: ['start_cooking', ...PROPOSE], db: NONE },
+    expect: {
+      tools: ['expiring_soon', 'suggest_recipes', 'start_cooking'],
+      forbid: PROPOSE,
+      args: [{ tool: 'start_cooking', accepted: true, args: { substitutions: [{ from_item: /scallion/i, to_item: /onion/i }] } }],
+      db: NONE,
+    },
   },
   {
     id: 'G4',
@@ -372,8 +368,9 @@ export const CASES: readonly EvalCase[] = [
       await ctx.say('Cook the tomato egg stir-fry', 'voice');
       await nextUntil(ctx, 4);
       await ctx.answer('next');
+      // In the same turn; next_step first (which would report done) is optional: the user hears the same.
       const names = ctx.lastCalls.map((c) => c.name);
-      ctx.expect('tools', names.includes('next_step') && names.includes('propose_consumption'), `the last "next" called ${names.join(', ')}`);
+      ctx.expect('tools', names.includes('propose_consumption'), `the last "next" called ${names.join(', ') || 'nothing'}`);
       await ctx.answer('confirm');
     },
     expect: {

@@ -71,6 +71,10 @@ describe('eval harness', () => {
     const card = (readback_text: string) => ({ type: 'proposal', card: { readback_text } });
     expect(withoutReadBacks({ speech: "Spilled? I'll record 200 ml. Say confirm.", cards: [card("I'll record 200 ml. Say confirm.")] })).toBe('Spilled?');
     expect(withoutReadBacks({ speech: 'Step 2: boil.', cards: [{ type: 'step' }] })).toBe('Step 2: boil.');
+    // A sentence that only proposes claims nothing, however it is worded.
+    expect(withoutReadBacks({ speech: "I’ll record 4 eggs instead of 3. Saved your milk. It will be added once you say “confirm”.", cards: [] })).toBe(
+      'Saved your milk.',
+    );
   });
 
   it('records an aborted script and still checks what happened', async () => {

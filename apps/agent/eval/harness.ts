@@ -226,14 +226,26 @@ export interface CaseResult {
 
 export const passed = (r: CaseResult) => r.aborted === null && Object.values(r.checks).every((c) => c.verdict === 'pass');
 
-/** A message's speech less the read-back text of each card it carries. */
+/** "I'll record…", "it will be added", "say confirm": a sentence that proposes claims nothing done. */
+const PROPOSES = /\b(?:I'll|I will|will|would|shall|going to)\b|\bsay\s+["“]?confirm/i;
+
+/**
+ * What a message claims: its speech less the read-back of each card it carries, and less any
+ * sentence that only proposes. The judge read "I'll record 4 eggs" as done (eval P2b, G4, P10).
+ */
 export function withoutReadBacks(m: Pick<Outbound, 'speech' | 'cards'>): string {
   let speech = m.speech;
   for (const c of m.cards) {
     const readBack = (c.card as { readback_text?: string } | undefined)?.readback_text;
     if (readBack) speech = speech.replace(readBack, '');
   }
-  return speech.replace(/\s+/g, ' ').trim();
+  return speech
+    .replace(/[‘’]/g, "'")
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => s.trim() !== '' && !PROPOSES.test(s))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Worker timing for the eval: no gap between proactive turns, so a case never waits on a clock. */
