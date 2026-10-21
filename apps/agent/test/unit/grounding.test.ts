@@ -43,5 +43,18 @@ describe('ground', () => {
     expect(ground("I'm making the pasta. Step 1: Heat the butter in a skillet.", { committed: false }).text).toBe("I'm making the pasta.");
     expect(ground('On to step two.', { committed: true }).steps).toEqual(['On to step two.']);
     expect(ground("Say next when you're ready for the next step.", { committed: false }).steps).toEqual([]);
+    // Nova's paraphrase of the step it was given (eval G6).
+    expect(ground('The next step is to scramble the eggs.', { committed: false }).steps).toEqual(['The next step is to scramble the eggs.']);
+  });
+
+  it('leaves out a claim that a timer runs unless the turn started one', () => {
+    // As Nova said of a step whose timer the app was only offering (eval G6).
+    for (const s of ["There's a 60-second timer set for this step.", 'The timer is now running.', "I've started a timer for the eggs."]) {
+      expect(ground(s, { committed: false })).toEqual({ text: '', claims: [s], steps: [] });
+      expect(ground(s, { committed: false, timerStarted: true }).text).toBe(s);
+    }
+    for (const s of ['Shall I set a timer?', 'The timer has finished.', "I'll set a timer if you want."]) {
+      expect(ground(s, { committed: false }).text).toBe(s);
+    }
   });
 });

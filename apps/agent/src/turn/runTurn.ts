@@ -107,6 +107,10 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
       if (call.name === 'next_step' && call.final_input.expected_step === undefined) {
         return toolError('no_step_heard', 'No recipe step has been read to the user yet. Call get_session and read the current step first.');
       }
+      if (call.name === 'next_step' && trigger.type === 'user' && (await stepsTaken(deps.pool, conversationId, owner, call.tool_use_id)) >= nextsSaid(trigger.text)) {
+        // In the eval Nova answered one "next" with six next_step calls, skipping to the end.
+        return toolError('one_step_per_next', 'The user asked for one step per "next". Let them hear this step first.');
+      }
       if (isLocalTool(call.name)) {
         const name = call.name;
         return lease.write((tx) => runLocalTool(tx, conversationId, name, call.final_input, call.request_id));
@@ -124,7 +128,7 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
       for (const use of uses) {
         let call = (await callsByToolUse(deps.pool, conversationId, [use.toolUseId])).get(use.toolUseId);
         if (!call) {
-          const finalInput = await injectInputs(deps.pool, conversationId, owner, use, snapshot);
+          const finalInput = await injectInputs(deps.pool, conversationId, owner, use, snapshot, trigger.type === 'user' ? trigger.text : null);
           await lease.write((tx) =>
             insertPending(tx, conversationId, owner, {
               toolUseId: use.toolUseId,
@@ -154,10 +158,12 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
      */
     const groundReply = async (content: ContentBlock[]): Promise<ContentBlock[]> => {
       const committed = heardCommit(messages);
+      const calls = await callsOfTurn(deps.pool, conversationId, owner);
+      const timerStarted = calls.some((c) => (c.name === 'start_timer' || c.name === 'resume_timer') && c.result !== null && !c.result.isError);
       let claims = 0;
       const grounded = content.map((b) => {
         if (!isText(b)) return b;
-        const g = ground(b.text, { committed });
+        const g = ground(b.text, { committed, timerStarted });
         claims += g.claims.length;
         return { text: g.text };
       });
@@ -223,8 +229,10 @@ async function startTurn(lease: ConversationLease, trigger: TurnTrigger): Promis
 }
 
 /**
- * §7.4 `expected_step`: the step the user heard when the turn began, moved on by each step this turn
- * delivered through start_cooking or a successful next_step ("next, next").
+ * Inputs the app sets, not the model:
+ * - §7.4 `expected_step`: the step the user heard when the turn began, moved on by each step this
+ *   turn delivered through start_cooking or a successful next_step ("next, next");
+ * - `chosen_by_user` on a substitution: whether the user's own words this turn name the substitute.
  */
 async function injectInputs(
   pool: Pool,
@@ -232,8 +240,14 @@ async function injectInputs(
   owner: TurnOwner,
   use: ToolUse,
   snapshot: TurnSnapshot | null,
+  userText: string | null,
 ): Promise<Record<string, unknown>> {
   const input = { ...((use.input ?? {}) as Record<string, unknown>) };
+  const named = (item: unknown) => userText !== null && typeof item === 'string' && mentions(userText, item);
+  if (use.name === 'start_cooking' && Array.isArray(input.substitutions)) {
+    input.substitutions = input.substitutions.map((s: Record<string, unknown>) => ({ ...s, chosen_by_user: named(s.to_item) }));
+  }
+  if (use.name === 'substitute' && input.to_item !== undefined) input.chosen_by_user = named(input.to_item);
   if (use.name !== 'next_step') return input;
   delete input.expected_step;
   let step = snapshot?.step_no;
@@ -336,6 +350,24 @@ async function finishTurn(
   });
 
   return { messageId, speech, trace };
+}
+
+/** How many steps the user asked for: one per "next" said ("next, next"), at least one. */
+export function nextsSaid(text: string): number {
+  return Math.max(1, text.match(/\bnext\b/gi)?.length ?? 0);
+}
+
+/** Steps this turn's other next_step calls moved on. */
+async function stepsTaken(pool: Pool, conversationId: string, owner: TurnOwner, toolUseId: string): Promise<number> {
+  const calls = await callsOfTurn(pool, conversationId, owner);
+  return calls.filter((c) => c.tool_use_id !== toolUseId && c.name === 'next_step' && c.result !== null && !c.result.isError).length;
+}
+
+/** Whether `text` names `item`, as a word, singular or plural ("the onions" names "onion"). */
+export function mentions(text: string, item: string): boolean {
+  const singular = item.trim().toLowerCase().replace(/(?:es|s)$/, '');
+  const escaped = singular.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}(?:e?s)?\\b`, 'i').test(text);
 }
 
 /** Whether this turn's input told the model of a commit: only then may it say the stock changed. */

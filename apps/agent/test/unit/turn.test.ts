@@ -1,7 +1,7 @@
 // Turn plumbing without I/O: message shaping for Converse, local tool specs, speech templates.
 import { describe, expect, it } from 'vitest';
 import { localToolSpecs } from '../../src/tools/local.ts';
-import { toModelMessages } from '../../src/turn/runTurn.ts';
+import { mentions, nextsSaid, toModelMessages } from '../../src/turn/runTurn.ts';
 import { duration, eventBlock, fallbackSpeech, timerOffer } from '../../src/turn/speech.ts';
 
 describe('toModelMessages', () => {
@@ -66,5 +66,25 @@ describe('speech templates', () => {
     expect(eventBlock({ kind: 'proposal_committed', payload: { proposal_id: 'p1', version: 2, kind: 'intake', summary } })).toBe(
       '[app event] proposal p1 v2 (intake) committed. Saved: {"lines":[{"item":"egg","quantity":3,"unit":"pcs"}],"new_items":[],"new_conversions":[]}',
     );
+  });
+});
+
+describe('what the user said', () => {
+  it('counts the steps asked for, one per "next", at least one', () => {
+    expect(nextsSaid('next')).toBe(1);
+    expect(nextsSaid('Next, next!')).toBe(2);
+    expect(nextsSaid("what's after this?")).toBe(1);
+    expect(nextsSaid('nextstep')).toBe(1);
+  });
+
+  it('finds an item named as a word, singular or plural', () => {
+    expect(mentions("Let's use the onion", 'onion')).toBe(true);
+    expect(mentions('the onions, please', 'onion')).toBe(true);
+    expect(mentions('use onion', 'onions')).toBe(true);
+    expect(mentions('Bell pepper it is', 'bell pepper')).toBe(true);
+    expect(mentions('make dinner with what is going bad', 'onion')).toBe(false);
+    expect(mentions('scallion', 'onion')).toBe(false);
+    expect(mentions('add the half-and-half', 'half-and-half')).toBe(true);
+    expect(mentions('axb', 'a.b')).toBe(false); // a name is matched literally
   });
 });
