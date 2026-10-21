@@ -65,10 +65,9 @@ describe('proactive turns', () => {
 
     const request = agent.model.requests.at(-2)!;
     expect(request.messages.at(-1)!.content).toEqual([{ text: '[app event] timer "eggs" finished.' }]);
+    // A turn for timers alone may only read: no card, so no consumption proposed off a timer (eval G5, P9).
     const offered = request.tools.map((t) => t.name).sort();
-    expect(offered).toEqual(
-      ['expiring_soon', 'get_session', 'list_inventory', 'list_recent_operations', 'list_timers', 'propose_consumption', 'suggest_recipes'].sort(),
-    );
+    expect(offered).toEqual(['expiring_soon', 'get_session', 'list_inventory', 'list_recent_operations', 'list_timers', 'suggest_recipes'].sort());
     const refused = agent.model.requests.at(-1)!.messages.at(-1)!.content as unknown as Array<{ toolResult: unknown }>;
     expect(refused.map((b) => b.toolResult)).toEqual([
       expect.objectContaining({ status: 'error', content: [{ json: expect.objectContaining({ code: 'tool_not_allowed' }) }] }),

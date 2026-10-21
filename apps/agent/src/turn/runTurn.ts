@@ -13,8 +13,9 @@ import { closeOpenWindows } from '../store/windows.ts';
 import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
+import { ground } from './grounding.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
-import { eventBlock, fallbackSpeech, TURN_FAILED, timerOffer } from './speech.ts';
+import { eventBlock, fallbackSpeech, NOT_CHANGED, TURN_FAILED, timerOffer } from './speech.ts';
 
 /** §8.1: the single source of truth for iteration caps (also §11.5). */
 export const MAX_ITERATIONS = { user: 8, proactive: 3 } as const;
@@ -32,6 +33,12 @@ const PROACTIVE_TOOLS: ReadonlySet<string> = new Set([
   'propose_consumption',
   'list_timers',
 ]);
+
+/**
+ * A fired timer is announced, never acted on (§9.6 G5, G8): a turn for timers alone may only read.
+ * In the eval, Nova proposed the consumption when a step timer fired.
+ */
+const TIMER_TOOLS: ReadonlySet<string> = new Set([...PROACTIVE_TOOLS].filter((t) => !t.startsWith('propose_')));
 
 /**
  * Retries of a reply with nothing in it: no text and no tool use, e.g. when Nova answered with only
@@ -79,7 +86,9 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
   const conversationId = lease.conversationId;
   const owner: TurnOwner =
     trigger.type === 'user' ? { chatRequestId: trigger.chatRequestId } : { eventIds: trigger.events.map((e) => e.id) };
-  const allowed = (name: string) => trigger.type === 'user' || PROACTIVE_TOOLS.has(name);
+  const proactiveTools =
+    trigger.type === 'proactive' && trigger.events.every((e) => e.kind === 'timer_fired') ? TIMER_TOOLS : PROACTIVE_TOOLS;
+  const allowed = (name: string) => trigger.type === 'user' || proactiveTools.has(name);
 
   const mcp = await deps.connectMcp();
   try {
@@ -139,6 +148,24 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
       await lease.write((tx) => appendMessage(tx, conversationId, 'user', results));
     };
 
+    /**
+     * §8.3 guardrails on the final reply, before it is said or kept (grounding.ts). A reply that was
+     * nothing but a false claim of a change becomes a templated line, unless a card is read back.
+     */
+    const groundReply = async (content: ContentBlock[]): Promise<ContentBlock[]> => {
+      const committed = heardCommit(messages);
+      let claims = 0;
+      const grounded = content.map((b) => {
+        if (!isText(b)) return b;
+        const g = ground(b.text, { committed });
+        claims += g.claims.length;
+        return { text: g.text };
+      });
+      const silent = !grounded.some((b) => isText(b) && b.text !== '');
+      if (claims > 0 && silent && !(await cardOfTurn(deps.pool, conversationId, owner, ''))) return [{ text: NOT_CHANGED }];
+      return grounded;
+    };
+
     let messages = await loadMessages(deps.pool, conversationId);
     // Resume: an assistant message whose toolUses never got their results appended.
     const last = messages.at(-1);
@@ -153,7 +180,8 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
       for (let retry = 0; retry < EMPTY_REPLY_RETRIES && reply.content.length === 0; retry++) {
         reply = await deps.model.converse({ ...request, messages: withNudge(request.messages) });
       }
-      const content = reply.content.length > 0 ? reply.content : [{ text: '' }];
+      let content: ContentBlock[] = reply.content.length > 0 ? reply.content : [{ text: '' }];
+      if (!content.some(isToolUse)) content = await groundReply(content);
       await lease.write((tx) => appendMessage(tx, conversationId, 'assistant', content));
       const uses = content.filter(isToolUse).map((b) => b.toolUse);
       if (uses.length > 0) await runToolUses(uses);
@@ -240,6 +268,7 @@ async function finishTurn(
   const cards: Card[] = [];
   let proposal: Record<string, unknown> | null = null;
   let step: { session_id: string; step_no: number } | null = null;
+  let stepSpeech: string | null = null;
   let offer: VoicePrompt | null = null;
   for (const call of calls) {
     const { isError, data } = call.result!;
@@ -254,6 +283,8 @@ async function finishTurn(
       step = { session_id: data.session_id as string, step_no: data.step_no };
       if (call.name === 'get_session') continue;
       cards.push({ type: 'step', ...pick(data, ['session_id', 'step_no', 'total_steps', 'step_text', 'timer_seconds', 'timer_label', 'done']) });
+      // The app reads the step from the recipe; the model may not (grounding.ts).
+      stepSpeech = data.done !== true && typeof data.step_text === 'string' ? `Step ${data.step_no}: ${data.step_text}` : null;
       offer =
         typeof data.timer_seconds === 'number' && data.done !== true
           ? {
@@ -267,6 +298,7 @@ async function finishTurn(
     }
   }
 
+  if (stepSpeech) speech = `${speech} ${stepSpeech}`.trim();
   let voicePrompt: VoicePrompt | null = null;
   if (proposal) {
     cards.push({ type: 'proposal', ...pick(proposal, ['proposal_id', 'version', 'kind', 'card', 'expires_at']) });
@@ -304,6 +336,12 @@ async function finishTurn(
   });
 
   return { messageId, speech, trace };
+}
+
+/** Whether this turn's input told the model of a commit: only then may it say the stock changed. */
+function heardCommit(messages: readonly Message[]): boolean {
+  const input = messages.findLast((m) => m.role === 'user' && m.content.some(isText));
+  return input?.content.some((b) => isText(b) && /^\[app event\] proposal \S+ v\d+ \(\w+\) committed\./.test(b.text)) ?? false;
 }
 
 /** Whether another call of this turn already made a card. */

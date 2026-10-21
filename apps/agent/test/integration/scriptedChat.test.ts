@@ -110,7 +110,13 @@ describe('a scripted chat: intake → cook → consume', () => {
     agent.model.push(callTools(['start_cooking', { recipe_name: 'tomato egg stir-fry' }]), say('Step 1: beat the eggs.'));
     await chat(agent, "Let's make tomato egg stir-fry");
     const step1 = await lastMessage(agent);
-    expect(step1).toMatchObject({ step_no: 1, voice_prompt: null, cards: [expect.objectContaining({ type: 'step', step_no: 1 })] });
+    expect(step1).toMatchObject({
+      // The model's step recital is left out; the app reads the step from the recipe.
+      speech: 'Step 1: Beat the eggs with a pinch of salt and cut the tomatoes into wedges.',
+      step_no: 1,
+      voice_prompt: null,
+      cards: [expect.objectContaining({ type: 'step', step_no: 1 })],
+    });
     expect(agent.model.requests.at(-1)!.messages.at(-1)!.content).toEqual([
       expect.objectContaining({ toolResult: expect.objectContaining({ status: 'success' }) }),
     ]);
@@ -118,7 +124,7 @@ describe('a scripted chat: intake → cook → consume', () => {
     agent.model.push(callTools(['next_step']), (req) => say(`Step ${lastToolResults(req)[0]!.step_no}.`));
     await chat(agent, 'next');
     expect(await lastMessage(agent)).toMatchObject({
-      speech: 'Step 2. This step takes 1 minute — start a timer?',
+      speech: 'Step 2: Scramble the eggs in half the oil until just set, then take them out. This step takes 1 minute — start a timer?',
       step_no: 2,
       voice_prompt: { kind: 'timer_offer', label: 'eggs', seconds: 60, step_no: 2 },
     });

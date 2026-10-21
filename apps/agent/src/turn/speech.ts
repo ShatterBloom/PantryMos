@@ -27,6 +27,8 @@ export const cardChanged = (readback: string) => `That card changed. Here's the 
 export const cardExpired = 'That card expired. Please ask again.';
 export const ALREADY_SAVED = 'That card was already saved.';
 export const TURN_FAILED = "Sorry, I couldn't finish that. Please try again.";
+/** Said in place of a reply that only claimed a change nobody confirmed (grounding.ts). */
+export const NOT_CHANGED = "I haven't changed your stock: that only happens when you confirm a card.";
 
 /** The `[app event]` block the model reads for an event (§8.2). */
 export function eventBlock(e: Pick<AppEvent, 'kind' | 'payload'>): string {

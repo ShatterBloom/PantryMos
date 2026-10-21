@@ -78,7 +78,8 @@ describe('resuming a crashed turn', () => {
     expect(agent.model.requests).toHaveLength(calls + 1); // only the closing reply; next_step was not re-decided
     expect(await currentStep()).toBe(2);
     expect(await userMessages()).toEqual([{ n: 4 }]); // two user turns + two tool-result messages, none repeated
-    expect(await lastMessage(agent)).toMatchObject({ speech: 'Step 2. This step takes 1 minute — start a timer?', step_no: 2 });
+    // The model's own "Step 2." is not said: the app reads the step from the recipe.
+    expect(await lastMessage(agent)).toMatchObject({ speech: 'Step 2: Scramble the eggs in half the oil until just set, then take them out. This step takes 1 minute — start a timer?', step_no: 2 });
 
     // A third try of the same request replays the stored response, trace included.
     expect(retried.body.trace).toEqual([expect.objectContaining({ name: 'next_step', input: { expected_step: 1 }, isError: false })]);
@@ -136,7 +137,12 @@ describe('resuming a crashed turn', () => {
     expect(await chat(agent, 'something else', { requestId })).toMatchObject({ status: 409, body: { code: 'request_conflict' } });
 
     let release!: () => void;
+    let inModel!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      inModel = resolve;
+    });
     agent.model.push(async () => {
+      inModel();
       await new Promise<void>((resolve) => {
         release = resolve;
       });
@@ -144,7 +150,8 @@ describe('resuming a crashed turn', () => {
     });
     const running = randomUUID();
     const first = chat(agent, 'slow one', { requestId: running });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // The first request holds its claim once its turn reaches the model, not after a fixed delay.
+    await reached;
     const second = await chat(agent, 'slow one', { requestId: running });
     expect(second).toMatchObject({ status: 409, body: { code: 'request_in_progress' } });
     expect(Number(second.headers['retry-after'])).toBeGreaterThan(0);
