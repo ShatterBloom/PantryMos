@@ -13,7 +13,7 @@ import { closeOpenWindows } from '../store/windows.ts';
 import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
-import { ground } from './grounding.ts';
+import { ground, withoutRecital } from './grounding.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 import { eventBlock, fallbackSpeech, NOT_CHANGED, TURN_FAILED, timerOffer } from './speech.ts';
 
@@ -317,8 +317,8 @@ async function finishTurn(
   if (proposal) {
     cards.push({ type: 'proposal', ...pick(proposal, ['proposal_id', 'version', 'kind', 'card', 'expires_at']) });
     const readback = (proposal.card as { readback_text: string }).readback_text;
-    // The model may repeat the read-back from the tool result; it is said once, last (§8.5).
-    speech = `${speech.split(readback).join(' ').replace(/\s+/g, ' ').trim()} ${readback}`.trim();
+    // The model may repeat or paraphrase the read-back from the tool result; it is said once, last (§8.5).
+    speech = `${withoutRecital(speech, readback)} ${readback}`.trim();
     voicePrompt = { kind: 'proposal_confirm', proposal_id: proposal.proposal_id as string, version: proposal.version as number };
   }
   // A card read-back takes precedence over a timer offer in the same message (§8.2).

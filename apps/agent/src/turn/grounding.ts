@@ -59,6 +59,28 @@ export function ground(text: string, { committed, timerStarted = false }: { comm
   return out;
 }
 
+/** "Say **confirm** to apply this", "I need you to say "confirm"…": the read-back asks that itself. */
+const ASKS_CONFIRM = /\b(?:say|tap|click|press|hit)\b[^.!?]*\bconfirm\b/i;
+
+const NUMBER = /\d+(?:\.\d+)?/g;
+
+/**
+ * The model's speech less what the card's read-back, appended after it, says again or asks itself
+ * (§8.5): the read-back, asks to confirm, sentences that only restate the card's amounts ("It will
+ * deduct 3 eggs and 2 tomatoes", eval G4, P1), and any question, as the read-back ends with the one
+ * the user answers. A sentence with an amount the card lacks, such as a shortfall, stays.
+ */
+export function withoutRecital(text: string, readback: string): string {
+  const onCard = new Set(readback.match(NUMBER) ?? []);
+  return sentences(text.split(readback).join(' '))
+    .filter((s) => {
+      if (ASKS_CONFIRM.test(s) || s.endsWith('?')) return false;
+      const numbers = s.match(NUMBER) ?? [];
+      return numbers.length === 0 || !numbers.every((n) => onCard.has(n));
+    })
+    .join(' ');
+}
+
 function sentences(text: string): string[] {
   return text
     .split(/(?<=[.!?])\s+/)

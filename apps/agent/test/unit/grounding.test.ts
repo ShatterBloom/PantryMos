@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ground } from '../../src/turn/grounding.ts';
+import { ground, withoutRecital } from '../../src/turn/grounding.ts';
 
 describe('ground', () => {
   it('leaves out a claim that the stock changed when no commit backs it', () => {
@@ -61,6 +61,43 @@ describe('ground', () => {
     }
     for (const s of ['Shall I set a timer?', 'The timer has finished.', "I'll set a timer if you want."]) {
       expect(ground(s, { committed: false }).text).toBe(s);
+    }
+  });
+});
+
+describe('withoutRecital', () => {
+  const milk = "I'll record that 125 milliliters of milk were thrown out: half of the 250 milliliters of milk the recipe uses. Say confirm, or tell me what to change.";
+  const meal = "I'll record 3 eggs, 15 milliliters of olive oil and 2 tomatoes. Say confirm, or tell me what to change.";
+
+  it('leaves out the read-back and paraphrases of it', () => {
+    // As Nova 2 Lite said before the app's read-back (eval G4, P1).
+    expect(
+      withoutRecital(
+        "I’ve prepared a proposal to record throwing out half the milk (125 ml) from the recipe’s 250 ml. Say **confirm** to apply this change, or tell me what to adjust.",
+        milk,
+      ),
+    ).toBe('');
+    expect(withoutRecital('The recipe now uses 125 ml of milk instead of 250 ml.', milk)).toBe('');
+    expect(
+      withoutRecital(
+        'The app is ready to record what you used. It will deduct 3 eggs, 15 ml of olive oil and 2 tomatoes. Say "confirm" or tell me what to change.',
+        meal,
+      ),
+    ).toBe('The app is ready to record what you used.');
+    expect(withoutRecital(`Got it. ${meal}`, meal)).toBe('Got it.');
+    // The read-back ends with the question the user answers.
+    expect(withoutRecital('The meal would be short of milk: you can make fewer servings or use a substitute. Which would you like?', milk)).toBe(
+      'The meal would be short of milk: you can make fewer servings or use a substitute.',
+    );
+  });
+
+  it('keeps what the card does not say', () => {
+    for (const s of [
+      'That leaves 75 ml, less than the 125 ml the recipe needs.',
+      'Sorry about the milk.',
+      "Once you confirm, I'll look at what's left.",
+    ]) {
+      expect(withoutRecital(s, milk)).toBe(s);
     }
   });
 });

@@ -31,7 +31,7 @@ describe('eval harness', () => {
   const p3 = CASES.find((c) => c.id === 'P3')!;
   /** P3 as the model should play it: one intake card for 6 eggs. */
   const scriptP3 = () =>
-    new ScriptedModel().push(callTools(['propose_intake', { items: [{ name: 'egg', quantity: 6 }] }]), say('Here is a card for 6 eggs.'));
+    new ScriptedModel().push(callTools(['propose_intake', { items: [{ name: 'egg', quantity: 6 }] }]), say('Here is a card for your eggs.'));
 
   it('passes P3 played right: the stale v1 click is refused, the voice "yes" commits the edited v2', async () => {
     const extractor = new FixedExtractor([{ message: 2, item: 'eggs', change: 'added', quantity: 12, unit: null }]);
@@ -54,7 +54,7 @@ describe('eval harness', () => {
     ]);
     // The log keeps what was said; the extractor hears it without the cards' read-backs (a card
     // proposes, it claims nothing), the templated gate reply included.
-    expect(r.turns[0]!.replies).toEqual(["Here is a card for 6 eggs. I'll add 6 eggs. Say confirm, or tell me what to change."]);
+    expect(r.turns[0]!.replies).toEqual(["Here is a card for your eggs. I'll add 6 eggs. Say confirm, or tell me what to change."]);
     expect(r.turns[1]!).toMatchObject({ replies: ["I'll add 12 eggs. Say confirm, or tell me what to change."], claimable: [] });
     expect(extractor.asked).toEqual([['Done — added to your stock.']]); // "Here is a card…" proposes
     expect(r.latency.modelCalls).toBe(2);
