@@ -27,8 +27,15 @@ const SELECT_HEAD = `
     LEFT JOIN pantry.cooking_sessions s ON s.id = o.session_id
     LEFT JOIN pantry.recipes r ON r.id = s.recipe_id`;
 
+/**
+ * An operation by its id, or by the id of the card that committed it: a model holding the card it
+ * just saw confirmed undoes "that" by the card's id (eval P2a).
+ */
 export async function operationById(q: Queryable, householdId: string, id: string): Promise<OperationHead | null> {
-  const { rows } = await q.query<OperationHead>(`${SELECT_HEAD} WHERE o.household_id = $1 AND o.id = $2`, [householdId, id]);
+  const { rows } = await q.query<OperationHead>(`${SELECT_HEAD} WHERE o.household_id = $1 AND (o.id = $2 OR o.proposal_id = $2)`, [
+    householdId,
+    id,
+  ]);
   return rows[0] ?? null;
 }
 

@@ -101,6 +101,16 @@ describe('propose_undo', () => {
       expect(await sessionState(sessionId)).toBe('consumed');
     });
 
+    it('3a by card: the confirmed correction card stands for its change', async () => {
+      const { revisionOp } = await workedExample();
+      const card = await withAdmin(
+        async (admin) => (await admin.query<{ proposal_id: string }>(`SELECT proposal_id FROM pantry.operations WHERE id = $1`, [revisionOp])).rows[0]!,
+      );
+      const p = await ok({ target: card.proposal_id, scope: 'operation' });
+      expect(p).toMatchObject({ scope: 'operation', target: revisionOp });
+      expect(p.card.readback_text).toMatch(/^I'll undo the correction to tomato egg stir-fry, putting back 1 egg\./);
+    });
+
     it('3b: undoing the whole meal puts back 3 eggs and reverts the session', async () => {
       const { sessionId, operationId, revisionOp } = await workedExample();
       const p = await ok({ target: 'last', scope: 'session' });

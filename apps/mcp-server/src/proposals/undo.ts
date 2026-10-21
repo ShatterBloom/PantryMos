@@ -23,7 +23,7 @@ import { roundQuantity } from '../domain/units.ts';
 export const UndoInputShape = {
   target: z
     .union([z.literal('last'), z.uuid()])
-    .describe('"last" for the most recent change, or an operation_id / session_id from list_recent_operations.'),
+    .describe('"last" for the most recent change, an operation_id / session_id from list_recent_operations, or the proposal_id of a confirmed card.'),
   scope: z.enum(['operation', 'session']).optional().describe('"session" undoes a whole meal; "operation" one change.'),
 };
 export const UndoInput = z.object(UndoInputShape);
