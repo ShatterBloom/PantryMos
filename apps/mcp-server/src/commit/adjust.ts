@@ -15,9 +15,9 @@ export const adjustExecutor: Executor = {
   },
 
   summary(proposal) {
-    const { item, unit, reason, note, allocation, new_batch } = payloadOf(proposal);
+    const { item, unit, reason, note, set_quantity, allocation, new_batch } = payloadOf(proposal);
     const delta = allocation.reduce((sum, a) => sum + a.delta, 0) + (new_batch?.quantity ?? 0);
-    return { item, unit, reason, note, delta: roundQuantity(delta), new_batch: new_batch !== null };
+    return { item, unit, reason, note, delta: roundQuantity(delta), set_quantity, new_batch: new_batch !== null };
   },
 
   async execute(tx, proposal, operationId) {

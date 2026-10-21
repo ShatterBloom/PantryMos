@@ -111,6 +111,13 @@ describe('propose_undo', () => {
       );
       const res = await confirmCard(servers, p, 1);
       expect(res.body).toMatchObject({ kind: 'undo', summary: { scope: 'session', target: sessionId } });
+      // The summary says what the read-back said, so an acknowledgement can repeat it.
+      expect((res.body.summary as { changes: unknown }).changes).toEqual([
+        { item: 'egg', delta: 3, unit: 'count' },
+        { item: 'olive oil', delta: 15, unit: 'ml' },
+        { item: 'scallion', delta: 1, unit: 'count' },
+        { item: 'tomato', delta: 2, unit: 'count' },
+      ]);
       expect((res.body.summary as { reverted_operations: string[] }).reverted_operations.sort()).toEqual([operationId, revisionOp].sort());
 
       expect(await eggs()).toBe(12);
@@ -206,7 +213,7 @@ describe('propose_undo', () => {
     expect(p).toMatchObject({ scope: 'session', target: sessionId, card: { lines: [] } });
     expect(p.card.readback_text).toMatch(/^I'll undo the whole tomato egg stir-fry meal, changing no stock\./);
     const res = await confirmCard(servers, p, p.version);
-    expect(res.body.summary).toEqual({ scope: 'session', target: sessionId, reverted_operations: [operationId] });
+    expect(res.body.summary).toEqual({ scope: 'session', target: sessionId, changes: [], reverted_operations: [operationId] });
     expect(await sessionState(sessionId)).toBe('reverted');
     expect(await eggs()).toBe(12);
     const reverted = await withAdmin(async (admin) =>

@@ -30,8 +30,8 @@ export const undoExecutor: Executor = {
   },
 
   summary(proposal) {
-    const { scope, target, reverted_operations } = payloadOf(proposal);
-    return { scope, target, reverted_operations };
+    const { scope, target, changes, reverted_operations } = payloadOf(proposal);
+    return { scope, target, changes, reverted_operations };
   },
 
   async execute(tx, proposal, operationId) {

@@ -16,7 +16,7 @@ import { findSession, itemInfo, type SessionRow } from '../db/sessions.ts';
 import type { Tx } from '../db/tx.ts';
 import { type Card, CONFIRM_PROMPT } from '../domain/card.ts';
 import { PantryError } from '../domain/errors.ts';
-import { checkNotNegative, defaultScope, describeReversal, type Reversal, reversalsOf, type UndoScope } from '../domain/undo.ts';
+import { checkNotNegative, defaultScope, describeReversal, type ItemChange, netChanges, type Reversal, reversalsOf, type UndoScope } from '../domain/undo.ts';
 import { speakQuantity } from '../domain/speech.ts';
 import { roundQuantity } from '../domain/units.ts';
 
@@ -34,6 +34,8 @@ export interface UndoPayload {
   /** The operation (scope operation) or session (scope session) being undone. */
   target: string;
   reversals: Reversal[];
+  /** The net stock change per item, for the commit summary. */
+  changes: ItemChange[];
   /** Operations reverted once this commits; one may have no events (a meal that took no stock). */
   reverted_operations: string[];
   card: Card;
@@ -74,13 +76,14 @@ export async function proposeUndo(
   const batches = await batchesByIds(tx, householdId, [...new Set(reversals.map((r) => r.batch_id))], today);
   checkNotNegative(reversals, new Map(batches.map((b) => [b.batch_id, { quantity: b.quantity, item: b.item, unit: b.unit }])));
 
-  const items = await itemInfo(tx, householdId);
+  const changes = netChanges(reversals, await itemInfo(tx, householdId));
   const payload: UndoPayload = {
     scope,
     target,
     reversals,
+    changes,
     reverted_operations: scope === 'session' ? await liveMealOperations(tx, session!.id) : [operation!.id],
-    card: renderCard(resolved, reversals, batches, items),
+    card: renderCard(resolved, reversals, changes, batches),
   };
   const preconditions: UndoPreconditions = {
     events_not_reverted: reversals.map((r) => r.reverts_event_id).sort(),
@@ -159,8 +162,8 @@ const alreadyReverted = (what: string) => new PantryError('already_reverted', `$
 function renderCard(
   { scope, operation, session }: Resolved,
   reversals: readonly Reversal[],
+  changes: readonly ItemChange[],
   batches: readonly BatchView[],
-  items: Map<string, { name: string; base_unit: 'count' | 'g' | 'ml' }>,
 ): Card {
   const what =
     scope === 'session'
@@ -182,6 +185,6 @@ function renderCard(
     title: `Undo ${what}`,
     lines,
     warnings: [],
-    readback_text: `I'll undo ${what}, ${describeReversal(reversals, items)}. ${CONFIRM_PROMPT}`,
+    readback_text: `I'll undo ${what}, ${describeReversal(changes)}. ${CONFIRM_PROMPT}`,
   };
 }

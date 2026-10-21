@@ -57,6 +57,11 @@ export interface AdjustPayload {
   unit: BaseUnit;
   reason: AdjustReason;
   note: string | null;
+  /**
+   * The counted quantity the one changed batch is set to, or null for a change by delta. The batch
+   * is pinned, so it is also the batch's quantity once this commits.
+   */
+  set_quantity: number | null;
   allocation: AllocationLine[];
   new_batch: NewBatch | null;
   card: Card;
@@ -102,6 +107,7 @@ export async function proposeAdjustment(
     unit: item.base_unit,
     reason: input.reason,
     note: input.note ?? null,
+    set_quantity: input.set_quantity === undefined ? null : roundQuantity(input.set_quantity),
     allocation,
     new_batch,
     card: renderCard(item, input.reason, allocation, touched, new_batch, today),

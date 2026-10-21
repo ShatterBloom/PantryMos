@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PantryError } from '../../src/domain/errors.ts';
-import { checkNotNegative, defaultScope, describeReversal, type Reversal, reversalsOf } from '../../src/domain/undo.ts';
+import { checkNotNegative, defaultScope, describeReversal, netChanges, type Reversal, reversalsOf } from '../../src/domain/undo.ts';
 
 const op = (kind: 'intake' | 'consume' | 'revise_consumption' | 'adjust') => ({ id: 'op1', kind, session_id: 's1', recipe: 'pasta' });
 const reversal = (batch_id: string, item_id: string, delta: number): Reversal => ({
@@ -73,16 +73,26 @@ describe('checkNotNegative', () => {
   });
 });
 
-describe('describeReversal', () => {
+describe('netChanges and describeReversal', () => {
   const items = new Map([
-    ['egg', { name: 'egg', base_unit: 'count' as const }],
     ['milk', { name: 'milk', base_unit: 'ml' as const }],
+    ['egg', { name: 'egg', base_unit: 'count' as const }],
+    ['tomato', { name: 'tomato', base_unit: 'count' as const }],
   ]);
 
-  it('says what goes back and what comes off, netted per item', () => {
-    expect(describeReversal([reversal('b1', 'egg', 2), reversal('b3', 'egg', 1), reversal('b2', 'milk', -50)], items)).toBe(
-      'putting back 3 eggs and taking off 50 milliliters of milk',
+  it('nets the change per item, by name, leaving out items that cancel out', () => {
+    const changes = netChanges(
+      [reversal('b2', 'milk', -50), reversal('b1', 'egg', 2), reversal('b3', 'egg', 1), reversal('b4', 'tomato', 1), reversal('b4', 'tomato', -1)],
+      items,
     );
-    expect(describeReversal([reversal('b1', 'egg', 1), reversal('b1', 'egg', -1)], items)).toBe('changing no stock');
+    expect(changes).toEqual([
+      { item: 'egg', delta: 3, unit: 'count' },
+      { item: 'milk', delta: -50, unit: 'ml' },
+    ]);
+    expect(describeReversal(changes)).toBe('putting back 3 eggs and taking off 50 milliliters of milk');
+  });
+
+  it('says so when nothing changes', () => {
+    expect(describeReversal(netChanges([reversal('b1', 'egg', 1), reversal('b1', 'egg', -1)], items))).toBe('changing no stock');
   });
 });

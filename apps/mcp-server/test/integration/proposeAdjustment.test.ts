@@ -82,7 +82,7 @@ describe('propose_adjustment', () => {
     const res = await confirmCard(servers, p, 1);
     expect(res).toMatchObject({
       status: 200,
-      body: { kind: 'adjust', summary: { item: 'egg', unit: 'count', reason: 'discard', delta: -6, new_batch: false } },
+      body: { kind: 'adjust', summary: { item: 'egg', unit: 'count', reason: 'discard', delta: -6, set_quantity: null, new_batch: false } },
     });
     expect(await batch(eggOld)).toMatchObject({ quantity: 0, status: 'discarded' });
     expect(await batch(eggNew)).toMatchObject({ quantity: 10, status: 'active' });
@@ -94,7 +94,9 @@ describe('propose_adjustment', () => {
     const p = await ok({ batch_id: eggNew, set_quantity: 10 }); // item comes from the batch
     expect(p.card.lines).toEqual([expect.stringMatching(/^−2 eggs · stored for 1 day/)]);
     expect((await stored(p.proposal_id)).preconditions).toEqual({ batches: [{ id: eggNew, version: 1 }] });
-    expect((await confirmCard(servers, p, 1)).status).toBe(200);
+    const res = await confirmCard(servers, p, 1);
+    // The summary carries the count as well as the change, so "you have 10 now" can be said.
+    expect(res).toMatchObject({ status: 200, body: { summary: { item: 'egg', unit: 'count', delta: -2, set_quantity: 10 } } });
     expect(await batch(eggNew)).toMatchObject({ quantity: 10, version: 2 });
     expect(await events('adjust')).toEqual([{ batch_id: eggNew, delta: -2 }]);
   });

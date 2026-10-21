@@ -96,7 +96,11 @@ describe('confirm consumption', () => {
     const p = await propose([{ item: 'milk', quantity: 1200 }]);
     const res = await confirm(p, 1);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: 'committed', kind: 'consume', summary: { session_id: sessionId } });
+    expect(res.body).toMatchObject({
+      status: 'committed',
+      kind: 'consume',
+      summary: { session_id: sessionId, lines: expect.arrayContaining([{ item: 'milk', quantity: 1200, unit: 'ml' }]) },
+    });
 
     expect(await quantity(milkA)).toBe(0);
     expect(await quantity(milkB)).toBe(800);

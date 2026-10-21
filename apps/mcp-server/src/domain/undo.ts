@@ -77,20 +77,31 @@ export function checkNotNegative(
   });
 }
 
-/** What the undo puts back and takes off, per item: "putting back 2 eggs and taking off 1 tomato". */
-export function describeReversal(
+export interface ItemChange {
+  item: string;
+  /** Net change to the item's stock, in its base unit: positive is put back. */
+  delta: number;
+  unit: BaseUnit;
+}
+
+/** The undo's net stock change per item, by name; items whose events cancel out are left out. */
+export function netChanges(
   reversals: readonly Reversal[],
   items: ReadonlyMap<string, { name: string; base_unit: BaseUnit }>,
-): string {
+): ItemChange[] {
   const net = new Map<string, number>();
   for (const r of reversals) net.set(r.item_id, roundQuantity((net.get(r.item_id) ?? 0) + r.delta));
-  const amount = (itemId: string, n: number) => {
-    const item = items.get(itemId)!;
-    return speakQuantity(item.name, Math.abs(n), item.base_unit, item.base_unit);
-  };
-  const byName = [...net].sort(([a], [b]) => items.get(a)!.name.localeCompare(items.get(b)!.name));
-  const back = byName.filter(([, d]) => d > 0).map(([id, d]) => amount(id, d));
-  const off = byName.filter(([, d]) => d < 0).map(([id, d]) => amount(id, d));
+  return [...net]
+    .filter(([, delta]) => delta !== 0)
+    .map(([itemId, delta]) => ({ item: items.get(itemId)!.name, delta, unit: items.get(itemId)!.base_unit }))
+    .sort((a, b) => a.item.localeCompare(b.item));
+}
+
+/** What the undo puts back and takes off, per item: "putting back 2 eggs and taking off 1 tomato". */
+export function describeReversal(changes: readonly ItemChange[]): string {
+  const amount = (c: ItemChange) => speakQuantity(c.item, Math.abs(c.delta), c.unit, c.unit);
+  const back = changes.filter((c) => c.delta > 0).map(amount);
+  const off = changes.filter((c) => c.delta < 0).map(amount);
   const parts = [back.length > 0 ? `putting back ${listAnd(back)}` : '', off.length > 0 ? `taking off ${listAnd(off)}` : ''];
   return parts.filter(Boolean).join(' and ') || 'changing no stock';
 }
