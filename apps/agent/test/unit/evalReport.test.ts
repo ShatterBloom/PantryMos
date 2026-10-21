@@ -10,11 +10,12 @@ function result(id: string, overrides: Partial<CaseResult> = {}): CaseResult {
     title: `case ${id}`,
     checks: { tools: pass, args: pass, db: pass, reply: pass },
     aborted: null,
-    turns: [{ input: 'I bought 6 eggs', replies: ['Here is a card.'], calls: [], ms: 1500 }],
+    turns: [{ input: 'I bought 6 eggs', replies: ['Here is a card.'], claimable: ['Here is a card.'], calls: [], ms: 1500 }],
     calls: [{ name: 'propose_intake', input: {}, status: 'success' }],
     claims: [],
     exchanges: [],
     latency: { modelCalls: 2, modelMs: 1200, totalMs: 1500 },
+    tokens: { input: 9000, output: 120 },
     ...overrides,
   };
 }
@@ -28,8 +29,9 @@ describe('renderReport', () => {
     });
     const report = renderReport(info, [result('P1'), failed, result('G1'), result('G1')]);
     expect(report).toContain('- Passed: **1 / 2** cases');
-    expect(report).toContain('| P1 case P1 | 1 | ✅ | ✅ | ✅ | ✅ | 2 | 1.2 | 1.5 |');
-    expect(report).toContain('|  | 2 | ✅ | ✅ | ❌ | ✅ | 2 | 1.2 | 1.5 |');
+    expect(report).toContain('- Agent model tokens: 36000 in, 480 out');
+    expect(report).toContain('| P1 case P1 | 1 | ✅ | ✅ | ✅ | ✅ | 2 | 9000 | 1.2 | 1.5 |');
+    expect(report).toContain('|  | 2 | ✅ | ✅ | ❌ | ✅ | 2 | 9000 | 1.2 | 1.5 |');
     expect(report).toContain('## P1 case P1 (run 2)\n\n- ❌ db: egg: changed by -6, expected -3\n');
     expect(report).toContain('Tools: propose_intake\n\n> **User:** I bought 6 eggs\n> **Mos:** Here is a card.\n');
     expect(report).toContain('p50 1.5 s, p95 1.5 s over 4; Bedrock 80% of the total.');

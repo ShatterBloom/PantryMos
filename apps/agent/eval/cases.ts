@@ -2,17 +2,23 @@
 // Each script plays the user; the expectations are what must hold whatever Mos says on the way.
 // G7, G9, G11 and G12 test the turn machinery, not the model; they run with a scripted model in
 // the integration suite (proactive.test.ts, resume.test.ts).
-import { adjustStock, createBatch, eatMeal, householdToday, PASTA_STOCK, stockKitchen, withAdmin } from '../../../test/fixtures.ts';
+import { createBatch, eatMeal, householdToday, PASTA_STOCK, stockKitchen, withAdmin } from '../../../test/fixtures.ts';
+import { ABSENT } from './checks.ts';
 import { CaseAborted, type CaseContext, type EvalCase, type SetupEnv } from './harness.ts';
 
 const STIR_FRY_STOCK = { egg: 6, tomato: 4, 'olive oil': 100, scallion: 2, 'soy sauce': 100 };
 const STIR_FRY_USED = { egg: -3, tomato: -2, 'olive oil': -15, scallion: -1, 'soy sauce': -5 };
 const PASTA_USED = { pasta: -300, spinach: -150, milk: -250, 'garlic clove': -2, butter: -20, scallion: -2, parmesan: -40 };
 
+const OMELETTE_STOCK = { egg: 6, spinach: 100, milk: 1000, butter: 50, cheddar: 100 };
+const OMELETTE_USED = { egg: -3, spinach: -50, milk: -30, butter: -10, cheddar: -30 };
 const { scallion: _scallion, ...PASTA_NO_SCALLION } = PASTA_STOCK;
 
 const negate = (stock: Record<string, number>) => Object.fromEntries(Object.entries(stock).map(([k, v]) => [k, -v]));
 const NONE = { stock: {}, operations: [] };
+/** "Never guess a date": dates the user did not give are left out, not made up. */
+const NO_DATES = { purchased_at: ABSENT, package_date: ABSENT, package_date_type: ABSENT };
+
 const PROPOSE = ['propose_intake', 'propose_consumption', 'propose_consumption_revision', 'propose_adjustment', 'propose_undo'];
 
 /** The pasta stock with the spinach about to go bad: the "whatever's about to go bad" setup. */
@@ -126,29 +132,29 @@ export const CASES: readonly EvalCase[] = [
     },
     expect: {
       tools: ['propose_intake'],
-      args: [{ tool: 'propose_intake', args: { items: [{ name: /^eggs?$/i, quantity: 6 }] } }],
+      args: [{ tool: 'propose_intake', args: { items: [{ name: /^eggs?$/i, quantity: 6, ...NO_DATES }] } }],
       db: { stock: { egg: 12 }, operations: ['intake'] },
     },
   },
   {
     id: 'P4',
     title: 'A batch changed under a pending card → stale → refresh',
-    stock: { milk: 1000 },
+    stock: OMELETTE_STOCK,
     async run(ctx) {
       await ctx.say('I spilled 200 ml of milk');
       await ctx.card();
       await ctx.heard();
-      await ctx.meanwhile('100 ml of milk used, recorded on another device', async () => {
-        const res = await adjustStock(ctx.env.servers, ctx.env.mcp, { item: 'milk', delta: -100 });
-        if (res.status !== 200) throw new CaseAborted(`adjust on another device → ${res.status}`);
-      });
+      // The meal's milk comes off the same batch, so the pending spill card's pin no longer holds.
+      await ctx.meanwhile('a spinach omelette cooked and confirmed on another device', () =>
+        eatMeal(ctx.env.servers, ctx.env.mcp, 'spinach omelette'),
+      );
       await ctx.say('yes', 'voice');
       await ctx.answer('yes');
     },
     expect: {
       tools: ['propose_adjustment'],
       args: [{ tool: 'propose_adjustment', args: { reason: 'discard', delta: -200 } }],
-      db: { stock: { milk: -300 }, operations: ['adjust', 'adjust'] },
+      db: { stock: { ...OMELETTE_USED, milk: -230 }, operations: ['consume', 'adjust'] },
     },
   },
   {
@@ -173,7 +179,13 @@ export const CASES: readonly EvalCase[] = [
     },
     expect: {
       tools: ['propose_intake'],
-      args: [{ tool: 'propose_intake', accepted: true, args: {} }],
+      args: [
+        {
+          tool: 'propose_intake',
+          accepted: true,
+          args: { items: [{ name: /milk/i, ...NO_DATES }, { name: /quinoa/i, ...NO_DATES }] },
+        },
+      ],
       db: { stock: { milk: 1000, quinoa: 500 }, operations: ['intake'] },
     },
   },

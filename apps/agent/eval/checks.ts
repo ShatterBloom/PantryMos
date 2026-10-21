@@ -52,17 +52,25 @@ export function checkArgs(calls: readonly ToolCall[], expectations: readonly Arg
     const candidates = calls.filter((c) => c.name === e.tool && (!e.accepted || c.status === 'success'));
     if (!candidates.some((c) => contains(c.input, e.args))) {
       const seen = candidates.map((c) => JSON.stringify(c.input)).join('; ') || 'no such call';
-      notes.push(`${e.tool} with ${JSON.stringify(e.args)}${e.accepted ? ' (accepted)' : ''}; got ${seen}`);
+      notes.push(`${e.tool} with ${describe(e.args)}${e.accepted ? ' (accepted)' : ''}; got ${seen}`);
     }
   }
   return result(notes);
 }
+
+/** Expected arguments as JSON, the matchers shown as /regex/ and <absent>. */
+const describe = (args: unknown) =>
+  JSON.stringify(args, (_k, v: unknown) => (v === ABSENT ? '<absent>' : v instanceof RegExp ? String(v) : v));
+
+/** An argument the model must leave out (or null), e.g. a date the user never gave. */
+export const ABSENT: unique symbol = Symbol('absent');
 
 /**
  * Deep partial match: objects by the expected keys, arrays position by position, a RegExp against a
  * string ("egg" or "eggs"), other values by equality.
  */
 export function contains(actual: unknown, expected: unknown): boolean {
+  if (expected === ABSENT) return actual === undefined || actual === null;
   if (expected instanceof RegExp) return typeof actual === 'string' && expected.test(actual);
   if (Array.isArray(expected)) {
     return Array.isArray(actual) && actual.length === expected.length && expected.every((e, i) => contains(actual[i], e));
@@ -157,8 +165,8 @@ const UNIT_SCALE: ReadonlyArray<[RegExp, string, number]> = [
 /** A said amount in an item's base unit, or null when the unit is not one we can convert. */
 export function toBase(quantity: number, unit: string | null, item: string, baseUnit: string): number | null {
   const u = (unit ?? '').trim().toLowerCase();
-  // "3 eggs", "2 tomatoes": the unit is the item itself, or absent.
-  if (baseUnit === 'count' && (u === '' || sameItem(u, item))) return quantity;
+  // "3 eggs", "2 tomatoes", "2 cloves" (of garlic clove): the unit is the item, its last word, or absent.
+  if (baseUnit === 'count' && (u === '' || sameItem(u, item) || sameItem(u, item.split(' ').at(-1)!))) return quantity;
   for (const [pattern, base, scale] of UNIT_SCALE) if (pattern.test(u)) return base === baseUnit ? round(quantity * scale) : null;
   return null;
 }

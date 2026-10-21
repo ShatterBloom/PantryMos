@@ -25,16 +25,17 @@ export function renderReport(info: RunInfo, results: readonly CaseResult[]): str
     '',
     `- Run: ${info.startedAt.toISOString()} · commit \`${info.commit}\` · model \`${info.modelId}\` · ${info.repeat} run(s) per case`,
     `- Passed: **${fullyPassed.length} / ${ids.length}** cases`,
+    `- Agent model tokens: ${sum(results, (r) => r.tokens.input)} in, ${sum(results, (r) => r.tokens.output)} out (the claim extractor's not counted)`,
     '',
-    '| Case | Run | Tools | Args | DB | Reply | Model calls | Bedrock s | Total s |',
-    '|---|---|---|---|---|---|---|---|---|',
+    '| Case | Run | Tools | Args | DB | Reply | Model calls | Tokens in | Bedrock s | Total s |',
+    '|---|---|---|---|---|---|---|---|---|---|',
   ];
   for (const id of ids) {
     runsOf(id).forEach((r, i) => {
       const { tools, args, db, reply } = r.checks;
       const name = i === 0 ? `${r.id} ${cell(r.title)}${r.aborted ? ' (aborted)' : ''}` : '';
       lines.push(
-        `| ${name} | ${i + 1} | ${MARK[tools.verdict]} | ${MARK[args.verdict]} | ${MARK[db.verdict]} | ${MARK[reply.verdict]} | ${r.latency.modelCalls} | ${secs(r.latency.modelMs)} | ${secs(r.latency.totalMs)} |`,
+        `| ${name} | ${i + 1} | ${MARK[tools.verdict]} | ${MARK[args.verdict]} | ${MARK[db.verdict]} | ${MARK[reply.verdict]} | ${r.latency.modelCalls} | ${r.tokens.input} | ${secs(r.latency.modelMs)} | ${secs(r.latency.totalMs)} |`,
       );
     });
   }
@@ -62,8 +63,8 @@ export function renderReport(info: RunInfo, results: readonly CaseResult[]): str
 /** §9.9: end-to-end turn latency, Bedrock's share reported separately. */
 function latency(results: readonly CaseResult[]): string {
   const turns = results.flatMap((r) => r.turns.map((t) => t.ms)).sort((a, b) => a - b);
-  const model = results.reduce((s, r) => s + r.latency.modelMs, 0);
-  const total = results.reduce((s, r) => s + r.latency.totalMs, 0);
+  const model = sum(results, (r) => r.latency.modelMs);
+  const total = sum(results, (r) => r.latency.totalMs);
   if (turns.length === 0) return 'Latency: no turns.';
   const pct = (p: number) => secs(turns[Math.min(turns.length - 1, Math.ceil((p / 100) * turns.length) - 1)]!);
   const share = total > 0 ? Math.round((model / total) * 100) : 0;
@@ -71,3 +72,4 @@ function latency(results: readonly CaseResult[]): string {
 }
 
 const secs = (ms: number) => (ms / 1000).toFixed(1);
+const sum = (results: readonly CaseResult[], of: (r: CaseResult) => number) => results.reduce((s, r) => s + of(r), 0);

@@ -61,6 +61,11 @@ export interface Turn {
   input: string;
   /** What Mos said in response, in order (proactive messages included). */
   replies: string[];
+  /**
+   * The same without the read-backs of the cards shown: the app appends those, and a card
+   * proposes a change, it does not claim one. This is what the reply check reads.
+   */
+  claimable: string[];
   /** The tool calls the model made meanwhile. */
   calls: ToolCall[];
   ms: number;
@@ -181,6 +186,7 @@ export class CaseContext {
     this.turns.push({
       input,
       replies: fresh.map((m) => m.speech),
+      claimable: fresh.map(withoutReadBacks).filter((s) => s !== ''),
       calls: toolCalls(this.agent.model.exchanges.slice(exchanges)),
       ms: performance.now() - started,
     });
@@ -214,9 +220,21 @@ export interface CaseResult {
   /** Every model request and response, for the raw dump. */
   exchanges: Exchange[];
   latency: { modelCalls: number; modelMs: number; totalMs: number };
+  /** Tokens the agent's model calls used (the extractor's are not counted). */
+  tokens: { input: number; output: number };
 }
 
 export const passed = (r: CaseResult) => r.aborted === null && Object.values(r.checks).every((c) => c.verdict === 'pass');
+
+/** A message's speech less the read-back text of each card it carries. */
+export function withoutReadBacks(m: Pick<Outbound, 'speech' | 'cards'>): string {
+  let speech = m.speech;
+  for (const c of m.cards) {
+    const readBack = (c.card as { readback_text?: string } | undefined)?.readback_text;
+    if (readBack) speech = speech.replace(readBack, '');
+  }
+  return speech.replace(/\s+/g, ' ').trim();
+}
 
 /** Worker timing for the eval: no gap between proactive turns, so a case never waits on a clock. */
 const EVAL_TIMING = { ...DEFAULT_WORKER_TIMING, proactiveGapMs: 0 };
@@ -248,7 +266,7 @@ export async function runCase(servers: RunningServers, model: ModelClient, extra
   const calls = toolCalls(agent.model.exchanges);
   const withFindings = (check: CheckResult, notes: string[]): CheckResult =>
     notes.length === 0 ? check : { verdict: 'fail', notes: [...check.notes, ...notes] };
-  const replies = ctx.turns.flatMap((t) => t.replies);
+  const replies = ctx.turns.flatMap((t) => t.claimable);
   let claims: Claim[] = [];
   let reply: CheckResult;
   try {
@@ -276,6 +294,10 @@ export async function runCase(servers: RunningServers, model: ModelClient, extra
       modelCalls: agent.model.exchanges.length,
       modelMs: Math.round(agent.model.exchanges.reduce((s, e) => s + e.ms, 0)),
       totalMs: Math.round(ctx.turns.reduce((s, t) => s + t.ms, 0)),
+    },
+    tokens: {
+      input: agent.model.exchanges.reduce((s, e) => s + (e.response.usage?.inputTokens ?? 0), 0),
+      output: agent.model.exchanges.reduce((s, e) => s + (e.response.usage?.outputTokens ?? 0), 0),
     },
   };
 }

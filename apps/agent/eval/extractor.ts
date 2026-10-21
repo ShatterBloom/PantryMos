@@ -10,18 +10,21 @@ export interface ClaimExtractor {
 
 const TOOL = 'report_claims';
 
-const INSTRUCTIONS = `You audit a kitchen assistant. You get its replies, numbered. List every stock change a reply says HAS ALREADY HAPPENED: something added to, put back into, removed from, used up from or thrown out of the stock.
+const INSTRUCTIONS = `You audit a kitchen assistant. You get one of its replies. List every stock change the reply says HAS ALREADY HAPPENED: something added to, put back into, removed from, used up from or thrown out of the stock.
 Do not list changes that are only proposed, asked about or planned ("I'll add 6 eggs", "shall I deduct...", "this recipe needs 3 eggs"): only ones the reply states as done ("Saved 6 eggs", "I've recorded that you used 200 g of pasta", "Undone, 3 eggs are back").
-Give each claim's item as named in the reply and its change: added or removed for a change by an amount ("added 6 eggs", "used 200 g of pasta"), set_to for a resulting amount ("you now have 10 eggs", "the meal now uses 4 eggs"). Give the amount and unit exactly as said (quantity and unit null when no amount is said). Call ${TOOL} once, with an empty list when there are none.`;
+Only list items the reply names: "Done, added to your stock" names none, and "stock", "inventory" or "groceries" are not items. Give each claim's item as named in the reply and its change: added or removed for a change by an amount ("added 6 eggs", "used 200 g of pasta"), set_to for a resulting amount ("you now have 10 eggs", "the meal now uses 4 eggs"). Give the amount and unit exactly as said (quantity and unit null when no amount is said). Call ${TOOL} once, with an empty list when there are none.`;
 
 const ClaimsInput = z.object({
   claims: z.array(
     z.object({
-      message: z.number().int().min(0),
       item: z.string().min(1),
       change: z.enum(['added', 'removed', 'set_to']),
       quantity: z.number().nullable(),
-      unit: z.string().nullable(),
+      // A model may write the word "null" for no unit.
+      unit: z
+        .string()
+        .nullable()
+        .transform((u) => (u === null || /^(null|none|)$/i.test(u.trim()) ? null : u)),
     }),
   ),
 });
@@ -34,13 +37,12 @@ const INPUT_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          message: { type: 'integer', description: 'The number of the reply that makes the claim.' },
           item: { type: 'string' },
           change: { type: 'string', enum: ['added', 'removed', 'set_to'] },
           quantity: { type: ['number', 'null'] },
           unit: { type: ['string', 'null'], description: 'As said, e.g. "g", "liters", "eggs"; null if none.' },
         },
-        required: ['message', 'item', 'change', 'quantity', 'unit'],
+        required: ['item', 'change', 'quantity', 'unit'],
       },
     },
   },
@@ -56,14 +58,21 @@ export class BedrockClaimExtractor implements ClaimExtractor {
     this.modelId = options.modelId;
   }
 
+  /** One call per reply, so a claim cannot be put on a reply that did not make it. */
   async extract(replies: readonly string[]): Promise<Claim[]> {
-    if (replies.length === 0) return [];
-    const numbered = replies.map((r, i) => `[${i}] ${r}`).join('\n');
+    const claims: Claim[] = [];
+    for (const [message, reply] of replies.entries()) {
+      for (const c of await this.claimsOf(reply)) claims.push({ message, ...c });
+    }
+    return claims;
+  }
+
+  private async claimsOf(reply: string): Promise<Array<Omit<Claim, 'message'>>> {
     const out = await this.client.send(
       new ConverseCommand({
         modelId: this.modelId,
         system: [{ text: INSTRUCTIONS }],
-        messages: [{ role: 'user', content: [{ text: numbered }] }],
+        messages: [{ role: 'user', content: [{ text: reply }] }],
         toolConfig: {
           tools: [{ toolSpec: { name: TOOL, description: 'Report the claimed stock changes.', inputSchema: { json: INPUT_SCHEMA } } }],
           toolChoice: { tool: { name: TOOL } },

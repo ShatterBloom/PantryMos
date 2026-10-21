@@ -36,6 +36,8 @@ export interface ModelResponse {
   /** 'tool_use' when the model wants tools run; anything else ends the loop. */
   stopReason: string;
   content: ContentBlock[];
+  /** Tokens billed for the call, when the model reports them. */
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 export interface ModelClient {

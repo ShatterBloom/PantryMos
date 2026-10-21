@@ -5,7 +5,7 @@ import { mcpTestConfig } from '../../../../test/fixtures.ts';
 import { CASES } from '../../eval/cases.ts';
 import type { Claim } from '../../eval/checks.ts';
 import type { ClaimExtractor } from '../../eval/extractor.ts';
-import { type EvalCase, passed, runCase } from '../../eval/harness.ts';
+import { type EvalCase, passed, runCase, withoutReadBacks } from '../../eval/harness.ts';
 import { callTools, ScriptedModel, say } from '../fixtures.ts';
 
 /** Stands in for the LLM extractor: returns the claims given, and records what it was asked. */
@@ -52,9 +52,11 @@ describe('eval harness', () => {
       '[clicks confirm on v1]',
       '🎤 yes',
     ]);
-    // The extractor hears everything Mos said, the templated gate reply included.
-    expect(extractor.asked[0]!.at(0)).toBe("Here is a card for 6 eggs. I'll add 6 eggs. Say confirm, or tell me what to change.");
-    expect(extractor.asked[0]!.at(-1)).toBe('Done — added to your stock.');
+    // The log keeps what was said; the extractor hears it without the cards' read-backs (a card
+    // proposes, it claims nothing), the templated gate reply included.
+    expect(r.turns[0]!.replies).toEqual(["Here is a card for 6 eggs. I'll add 6 eggs. Say confirm, or tell me what to change."]);
+    expect(r.turns[1]!).toMatchObject({ replies: ["I'll add 12 eggs. Say confirm, or tell me what to change."], claimable: [] });
+    expect(extractor.asked).toEqual([['Here is a card for 6 eggs.', 'Done — added to your stock.']]);
     expect(r.latency.modelCalls).toBe(2);
   });
 
@@ -63,6 +65,12 @@ describe('eval harness', () => {
     const r = await runCase(servers, scriptP3(), extractor, p3);
     expect(r.checks.reply).toEqual({ verdict: 'fail', notes: ['reply 0: added 6 egg, but egg +12 count was committed'] });
     expect(passed(r)).toBe(false);
+  });
+
+  it('takes each card read-back out of the speech it was appended to', () => {
+    const card = (readback_text: string) => ({ type: 'proposal', card: { readback_text } });
+    expect(withoutReadBacks({ speech: "Spilled? I'll record 200 ml. Say confirm.", cards: [card("I'll record 200 ml. Say confirm.")] })).toBe('Spilled?');
+    expect(withoutReadBacks({ speech: 'Step 2: boil.', cards: [{ type: 'step' }] })).toBe('Step 2: boil.');
   });
 
   it('records an aborted script and still checks what happened', async () => {

@@ -57,7 +57,7 @@ function toBedrockBlock(block: ContentBlock): BedrockBlock {
 const THINKING = /<thinking>[\s\S]*?(?:<\/thinking>|$)/g;
 
 /** The model's reply in the turn loop's shape; blocks it does not use (reasoning, images) are dropped. */
-export function fromConverseOutput(output: Pick<ConverseCommandOutput, 'stopReason' | 'output'>): ModelResponse {
+export function fromConverseOutput(output: Pick<ConverseCommandOutput, 'stopReason' | 'output'> & Partial<Pick<ConverseCommandOutput, 'usage'>>): ModelResponse {
   const content: ContentBlock[] = [];
   for (const block of output.output?.message?.content ?? []) {
     if (block.text !== undefined) {
@@ -68,7 +68,9 @@ export function fromConverseOutput(output: Pick<ConverseCommandOutput, 'stopReas
       content.push({ toolUse: { toolUseId: block.toolUse.toolUseId!, name: block.toolUse.name!, input: block.toolUse.input ?? {} } });
     }
   }
-  return { stopReason: output.stopReason ?? 'end_turn', content };
+  const response: ModelResponse = { stopReason: output.stopReason ?? 'end_turn', content };
+  if (output.usage) response.usage = { inputTokens: output.usage.inputTokens ?? 0, outputTokens: output.usage.outputTokens ?? 0 };
+  return response;
 }
 
 export class BedrockModel implements ModelClient {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkArgs, checkClaims, checkDb, checkTools, contains, sameItem, setToOf, stockDiff, toBase, type ToolCall } from '../../eval/checks.ts';
+import { ABSENT, checkArgs, checkClaims, checkDb, checkTools, contains, sameItem, setToOf, stockDiff, toBase, type ToolCall } from '../../eval/checks.ts';
 
 const call = (name: string, input: Record<string, unknown> = {}, status: ToolCall['status'] = 'success'): ToolCall => ({ name, input, status });
 
@@ -22,6 +22,11 @@ describe('checkArgs', () => {
     const calls = [call('suggest_recipes', { servings: 2 }), call('suggest_recipes', { servings: 3, prefer_expiring: true })];
     expect(checkArgs(calls, [{ tool: 'suggest_recipes', args: { servings: 3 } }]).verdict).toBe('pass');
     expect(checkArgs(calls, [{ tool: 'suggest_recipes', args: { servings: 4 } }]).notes[0]).toMatch(/servings":4.*got/);
+    expect(checkArgs([call('propose_intake', { items: [{ name: 'eggs', package_date: '2026-04-15' }] })], [
+      { tool: 'propose_intake', args: { items: [{ name: /^eggs?$/i, package_date: ABSENT }] } },
+    ]).notes).toEqual([
+      'propose_intake with {"items":[{"name":"/^eggs?$/i","package_date":"<absent>"}]}; got {"items":[{"name":"eggs","package_date":"2026-04-15"}]}',
+    ]);
   });
 
   it('counts only accepted calls when asked to', () => {
@@ -39,6 +44,9 @@ describe('checkArgs', () => {
     expect(contains(null, { a: 1 })).toBe(false);
     expect(contains({ name: 'eggs' }, { name: /^eggs?$/ })).toBe(true);
     expect(contains({ name: 3 }, { name: /3/ })).toBe(false);
+    expect(contains({ quantity: 6 }, { package_date: ABSENT })).toBe(true);
+    expect(contains({ package_date: null }, { package_date: ABSENT })).toBe(true);
+    expect(contains({ package_date: '2026-04-15' }, { package_date: ABSENT })).toBe(false);
   });
 });
 
@@ -144,6 +152,7 @@ describe('units and names', () => {
     expect(toBase(1.5, 'kg', 'flour', 'g')).toBe(1500);
     expect(toBase(1, 'L', 'milk', 'ml')).toBe(1000);
     expect(toBase(2, 'pieces', 'tomato', 'count')).toBe(2);
+    expect(toBase(2, 'cloves', 'garlic clove', 'count')).toBe(2);
     expect(toBase(200, 'g', 'milk', 'ml')).toBeNull();
     expect(toBase(1, 'carton', 'egg', 'count')).toBeNull();
   });
