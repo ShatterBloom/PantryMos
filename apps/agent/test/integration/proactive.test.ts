@@ -140,6 +140,17 @@ describe('proactive turns', () => {
     expect((await proactive()).map((m) => m.speech)).toEqual(["Timer 'rice' is done."]);
   });
 
+  it('says the templated line when the model only keeps calling tools', async () => {
+    await startTimer('rice');
+    await makeDue('rice');
+    // As Nova did when a step timer fired (eval G5).
+    agent.model.push(...Array.from({ length: 3 }, () => callTools(['list_timers', {}])));
+    const before = agent.model.requests.length;
+    await tick();
+    expect(agent.model.requests).toHaveLength(before + 3);
+    expect((await proactive()).map((m) => m.speech)).toEqual(["Timer 'rice' is done."]);
+  });
+
   /** Claims the conversation's events as a worker would, then "dies" before running a turn. */
   const claimAndDie = async () => {
     await claimEvents(agent.pool, kitchen.householdId, timing, []);

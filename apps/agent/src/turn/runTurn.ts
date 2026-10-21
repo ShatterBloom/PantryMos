@@ -270,6 +270,8 @@ async function finishTurn(
   const conversationId = lease.conversationId;
   const calls = (await callsOfTurn(pool, conversationId, owner)).filter((c) => c.result !== null);
   const last = messages.at(-1);
+  // Out of iterations: a proactive turn says its events' templated lines below, as the user asked
+  // nothing (eval G5: Nova kept reading the session when a timer fired).
   let speech =
     last?.role === 'assistant'
       ? last.content
@@ -277,7 +279,9 @@ async function finishTurn(
           .map((b) => b.text.trim())
           .filter(Boolean)
           .join(' ')
-      : "Sorry, that took too many steps. Let's try something simpler.";
+      : trigger.type === 'user'
+        ? "Sorry, that took too many steps. Let's try something simpler."
+        : '';
 
   const cards: Card[] = [];
   let proposal: Record<string, unknown> | null = null;
