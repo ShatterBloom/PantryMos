@@ -22,18 +22,20 @@ const HEDGED = /\b(?:not|nothing|n't|yet|until|once|if|when you|after you)\b/i;
 
 /** "Step 3", "step two", "the third step", "the next step is…": the app reads steps from the recipe itself. */
 const STEP =
-  /\bstep\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b|\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+step\b|\bnext\s+step\s+is\b/i;
+  /\bstep\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b|\b(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+step\b|\bnext\s+step\s*(?:is\b|:)/i;
 
-/** "There's a timer set for 60 seconds", "the timer is running", "I've started a timer". */
+/** "There's a timer set for 60 seconds", "the timer is running", "I've started a timer", "the app set a timer". */
 const TIMER_CLAIMS: readonly RegExp[] = [
   /\btimer\s+(?:is\s+|has\s+been\s+|was\s+)?(?:now\s+)?(?:set|running|started|going)\b/i,
-  /\b(?:I've|I have|I)\s+(?:just\s+)?(?:set|started)\b.*\btimer\b/i,
+  /\b(?:I've|I have|I|the app(?:\s+has)?)\s+(?:just\s+)?(?:set|started)\b.*\btimer\b/i,
 ];
 
 export interface Grounded {
   text: string;
-  /** Sentences left out because they claim a change (of stock or timers) nothing in the turn backs. */
+  /** Sentences left out because they claim a stock change nothing in the turn backs. */
   claims: string[];
+  /** Sentences left out because they claim a timer runs that the turn did not start. */
+  timers: string[];
   /** Sentences left out because they recite a recipe step. */
   steps: string[];
 }
@@ -44,7 +46,7 @@ export interface Grounded {
  * and any recital of a recipe step.
  */
 export function ground(text: string, { committed, timerStarted = false }: { committed: boolean; timerStarted?: boolean }): Grounded {
-  const out: Grounded = { text: '', claims: [], steps: [] };
+  const out: Grounded = { text: '', claims: [], timers: [], steps: [] };
   const kept: string[] = [];
   for (const sentence of sentences(text)) {
     // Nova writes curly apostrophes: "I’ve".
@@ -52,7 +54,7 @@ export function ground(text: string, { committed, timerStarted = false }: { comm
     const asserts = !HEDGED.test(plain) && !plain.endsWith('?');
     if (STEP.test(plain)) out.steps.push(sentence);
     else if (asserts && !committed && !SHOPPING_LIST.test(plain) && CLAIMS.some((c) => c.test(plain))) out.claims.push(sentence);
-    else if (asserts && !timerStarted && TIMER_CLAIMS.some((c) => c.test(plain))) out.claims.push(sentence);
+    else if (asserts && !timerStarted && TIMER_CLAIMS.some((c) => c.test(plain))) out.timers.push(sentence);
     else kept.push(sentence);
   }
   out.text = kept.join(' ');

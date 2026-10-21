@@ -11,6 +11,7 @@ describe('ground', () => {
     expect(said).toEqual({
       text: 'Let me know if you need anything else!',
       claims: ["I’ve recorded that you used 3 eggs and 2 tomatoes.", 'All ingredients have been deducted.'],
+      timers: [],
       steps: [],
     });
     expect(ground('I added 6 eggs bought today with no package date.', { committed: false }).text).toBe('');
@@ -35,7 +36,7 @@ describe('ground', () => {
       "I've added milk to your shopping list.",
       'Added milk.',
     ]) {
-      expect(ground(s, { committed: false })).toEqual({ text: s, claims: [], steps: [] });
+      expect(ground(s, { committed: false })).toEqual({ text: s, claims: [], timers: [], steps: [] });
     }
   });
 
@@ -44,6 +45,7 @@ describe('ground', () => {
     expect(ground('Time is up for the eggs. The third step is to stir-fry the tomatoes.', { committed: false })).toEqual({
       text: 'Time is up for the eggs.',
       claims: [],
+      timers: [],
       steps: ['The third step is to stir-fry the tomatoes.'],
     });
     expect(ground("I'm making the pasta. Step 1: Heat the butter in a skillet.", { committed: false }).text).toBe("I'm making the pasta.");
@@ -51,12 +53,20 @@ describe('ground', () => {
     expect(ground("Say next when you're ready for the next step.", { committed: false }).steps).toEqual([]);
     // Nova's paraphrase of the step it was given (eval G6).
     expect(ground('The next step is to scramble the eggs.', { committed: false }).steps).toEqual(['The next step is to scramble the eggs.']);
+    // Said ahead of the app's own "Step 2: …" (eval P1).
+    expect(ground('Next step: Scramble the eggs in half the oil. Ready?', { committed: false }).text).toBe('Ready?');
   });
 
   it('leaves out a claim that a timer runs unless the turn started one', () => {
     // As Nova said of a step whose timer the app was only offering (eval G6).
-    for (const s of ["There's a 60-second timer set for this step.", 'The timer is now running.', "I've started a timer for the eggs."]) {
-      expect(ground(s, { committed: false })).toEqual({ text: '', claims: [s], steps: [] });
+    for (const s of [
+      "There's a 60-second timer set for this step.",
+      'The timer is now running.',
+      "I've started a timer for the eggs.",
+      // Of a timer the app was only offering (eval P1).
+      'The app set a 60-second timer for the eggs.',
+    ]) {
+      expect(ground(s, { committed: false })).toEqual({ text: '', claims: [], timers: [s], steps: [] });
       expect(ground(s, { committed: false, timerStarted: true }).text).toBe(s);
     }
     for (const s of ['Shall I set a timer?', 'The timer has finished.', "I'll set a timer if you want."]) {
