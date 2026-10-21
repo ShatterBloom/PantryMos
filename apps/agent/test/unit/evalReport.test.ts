@@ -21,13 +21,14 @@ function result(id: string, overrides: Partial<CaseResult> = {}): CaseResult {
 }
 
 describe('renderReport', () => {
-  const info = { startedAt: new Date('2026-10-21T12:00:00Z'), modelId: 'nova', commit: 'abc1234', repeat: 2 };
+  const info = { startedAt: new Date('2026-10-21T12:00:00Z'), modelId: 'nova', extractorModelId: 'judge', commit: 'abc1234', repeat: 2 };
 
   it('counts a case as passed only when every run passed, and shows each run', () => {
     const failed = result('P1', {
       checks: { tools: pass, args: pass, db: { verdict: 'fail', notes: ['egg: changed by -6, expected -3'] }, reply: pass },
     });
     const report = renderReport(info, [result('P1'), failed, result('G1'), result('G1')]);
+    expect(report).toContain("commit `abc1234` · model `nova` (reply check: `judge`) · 2 run(s) per case");
     expect(report).toContain('- Passed: **1 / 2** cases');
     expect(report).toContain('- Agent model tokens: 36000 in, 480 out');
     expect(report).toContain('| P1 case P1 | 1 | ✅ | ✅ | ✅ | ✅ | 2 | 9000 | 1.2 | 1.5 |');

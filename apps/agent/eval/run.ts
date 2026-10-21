@@ -1,5 +1,7 @@
 // `pnpm eval [--only P1,G1] [--repeat 3]`: runs the eval cases against real Bedrock (§9.4, §9.6, §9.9)
 // and writes docs/eval-log.md, plus every exchange to apps/agent/eval/out/ for debugging.
+// BEDROCK_MODEL_ID picks the model under test, as for the agent; EVAL_EXTRACTOR_MODEL_ID pins the
+// reply-check extractor (default: the same model), so two models can be compared by one judge.
 // It recreates the throwaway test database, so it must not run alongside the test suite.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -33,7 +35,8 @@ const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding:
 const checkLedger = await setupTestDatabase();
 const servers = await startServers(mcpTestConfig(), { log: false });
 const model = new BedrockModel(bedrock);
-const extractor = new BedrockClaimExtractor(bedrock);
+const extractorModelId = process.env.EVAL_EXTRACTOR_MODEL_ID || bedrock.modelId;
+const extractor = new BedrockClaimExtractor({ region: bedrock.region, modelId: extractorModelId });
 const results: CaseResult[] = [];
 try {
   for (const c of cases) {
@@ -51,7 +54,7 @@ try {
 // R17 still holds after everything the cases did (I1: batch quantity = Σ events).
 await checkLedger();
 
-const info = { startedAt, modelId: bedrock.modelId, commit, repeat };
+const info = { startedAt, modelId: bedrock.modelId, extractorModelId, commit, repeat };
 mkdirSync('docs', { recursive: true });
 writeFileSync('docs/eval-log.md', renderReport(info, results));
 const outDir = 'apps/agent/eval/out';
