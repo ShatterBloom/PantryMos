@@ -13,6 +13,7 @@
     "test:integration": "vitest run --project integration",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "eval": "node apps/agent/eval/run.ts",
     "db:up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait db",
     "db:bootstrap": "node scripts/db-bootstrap.ts",
     "db:migrate": "node scripts/db-migrate.ts",
