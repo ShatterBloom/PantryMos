@@ -41,6 +41,21 @@ describe('grounding the reply', () => {
     expect(await kept()).toEqual([{ text: 'Oops.' }]);
   });
 
+  it("says what a spill leaves the meal from the card, not the model's account of it (eval P10)", async () => {
+    await stockKitchen(kitchen, { egg: 6, tomato: 4, 'olive oil': 100, scallion: 2 });
+    agent.model.push(callTools(['start_cooking', { recipe_name: 'tomato egg stir-fry' }]), say('OK.'));
+    await chat(agent, 'cook the stir-fry');
+    agent.model.push(
+      callTools(['propose_adjustment', { item: 'egg', delta: -4, reason: 'discard' }]),
+      say('Oh no! The recipe still needs 3 eggs, and you have 5 eggs left, so we can carry on with less.'),
+    );
+    await chat(agent, 'I dropped four eggs');
+    expect((await lastMessage(agent)).speech).toBe(
+      "Oh no! I'll record that 4 eggs were thrown out. That leaves the meal 1 egg short: you can carry on with less, use a substitute, " +
+        'add egg to the shopping list, or cook it another time. Say confirm, or tell me what to change.',
+    );
+  });
+
   it('says a templated line when the reply was only a false claim and there is no card', async () => {
     agent.model.push(say('All ingredients have been deducted.'));
     await chat(agent, 'just deduct it');

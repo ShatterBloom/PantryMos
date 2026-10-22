@@ -13,7 +13,7 @@ import { closeOpenWindows } from '../store/windows.ts';
 import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
-import { ground, NO_REPLY, withoutQuestions, withoutRecital, withoutStepRecital } from './grounding.ts';
+import { ground, NO_REPLY, withoutImpactTalk, withoutQuestions, withoutRecital, withoutStepRecital } from './grounding.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 import { eventBlock, fallbackSpeech, NOT_CHANGED, TURN_FAILED, timerOffer } from './speech.ts';
 
@@ -330,6 +330,9 @@ async function finishTurn(
   if (proposal) {
     cards.push({ type: 'proposal', ...pick(proposal, ['proposal_id', 'version', 'kind', 'card', 'expires_at']) });
     question = (proposal.card as { readback_text: string }).readback_text;
+    // An adjustment to an item the meal uses: the read-back says what it leaves the meal.
+    const impact = Array.isArray(proposal.impact_on_active_session) ? (proposal.impact_on_active_session as Array<{ item: string }>) : [];
+    if (impact.length > 0) speech = withoutImpactTalk(speech, (s) => impact.some((i) => mentions(s, i.item)));
     // The model may repeat or paraphrase the read-back from the tool result; it is said once, last (§8.5).
     speech = withoutRecital(speech, question);
     voicePrompt = { kind: 'proposal_confirm', proposal_id: proposal.proposal_id as string, version: proposal.version as number };

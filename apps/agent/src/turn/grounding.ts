@@ -78,6 +78,9 @@ const CONFIRM = /\bconfirm/i;
 
 const NUMBER = /\d+(?:\.\d+)?/g;
 
+/** A question put as a request: "Please tell me what you'd like to do" (eval G4). The read-back asks. */
+const ASKS = /\b(?:tell me|let me know)\b/i;
+
 /**
  * The model's speech less what the card's read-back, appended after it, says again or asks itself
  * (§8.5): the read-back, any talk of confirming, sentences that only restate the card's amounts
@@ -88,7 +91,7 @@ export function withoutRecital(text: string, readback: string): string {
   const onCard = new Set(readback.match(NUMBER) ?? []);
   return sentences(withoutQuestions(text.split(readback).join(' ')))
     .filter((s) => {
-      if (CONFIRM.test(s)) return false;
+      if (CONFIRM.test(s) || ASKS.test(s)) return false;
       const numbers = s.match(NUMBER) ?? [];
       return numbers.length === 0 || !numbers.every((n) => onCard.has(n));
     })
@@ -137,6 +140,21 @@ export function withoutStepRecital(text: string, stepText: string): { text: stri
 export function withoutQuestions(text: string): string {
   return sentences(text)
     .filter((s) => !s.endsWith('?'))
+    .join(' ');
+}
+
+/** What a change leaves the meal: "short", "carry on with less", "the recipe still needs", "you have … left". */
+const IMPACT = /\b(?:short|shortfall|carry on|another time|shopping list|substitute|left|enough|still needs?|recipe (?:uses|needs))\b/i;
+
+/**
+ * The model's speech less its account of what an adjustment leaves the meal being cooked: the
+ * card's read-back says that from the server's numbers (eval P10: "the recipe still needs 125 ml…
+ * you have 875 ml left, so we can carry on with less", none of it so). `namesItem` tells whether a
+ * sentence names the adjusted item.
+ */
+export function withoutImpactTalk(text: string, namesItem: (sentence: string) => boolean): string {
+  return sentences(spoken(text))
+    .filter((s) => !IMPACT.test(s) && !namesItem(s))
     .join(' ');
 }
 

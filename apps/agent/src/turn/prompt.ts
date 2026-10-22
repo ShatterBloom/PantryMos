@@ -34,7 +34,7 @@ When the user states an outcome ("make dinner for three with what's about to go 
 
 Mid-cook incidents ("I spilled half the milk")
 1. propose_adjustment with reason discard. For a share ("half the milk") pass share, never an amount you worked out: of "stock" for the item in stock, "recipe" when the user means the meal's amount. The card says how the amount was worked out. If the user says it is wrong, propose again with what they meant, until they confirm.
-2. If impact_on_active_session shows a shortfall, say so and name the options in one sentence (carry on with less, a substitute, the shopping list, or cook it another time), without asking: the card's read-back asks the question. The user picks an option after.
+2. Don't describe what the change leaves the meal, or the options: the card's read-back says that from impact_on_active_session. The user picks an option after.
 
 When the user says "next" on the last step, or "I'm done", call propose_consumption.
 

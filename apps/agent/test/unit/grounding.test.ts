@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ground, NO_REPLY, withoutQuestions, withoutRecital, withoutStepRecital } from '../../src/turn/grounding.ts';
+import { ground, NO_REPLY, withoutImpactTalk, withoutQuestions, withoutRecital, withoutStepRecital } from '../../src/turn/grounding.ts';
 
 describe('ground', () => {
   it('leaves out a claim that the stock changed when no commit backs it', () => {
@@ -118,6 +118,8 @@ describe('withoutRecital', () => {
     expect(withoutRecital('The meal would be short of milk: you can make fewer servings or use a substitute. Which would you like?', milk)).toBe(
       'The meal would be short of milk: you can make fewer servings or use a substitute.',
     );
+    // A question put as a request (eval G4).
+    expect(withoutRecital("Sorry about the milk. Please tell me what you'd like to do.", milk)).toBe('Sorry about the milk.');
     // Talk of confirming, and a promise nobody keeps: a confirm gets the app's templated reply (eval G4).
     expect(
       withoutRecital(
@@ -131,6 +133,20 @@ describe('withoutRecital', () => {
     for (const s of ['That leaves 75 ml, less than the 125 ml the recipe needs.', 'Sorry about the milk.']) {
       expect(withoutRecital(s, milk)).toBe(s);
     }
+  });
+});
+
+describe('withoutImpactTalk', () => {
+  it("leaves out the model's account of what a change leaves the meal, and keeps the rest", () => {
+    const namesMilk = (s: string) => /\bmilk\b/i.test(s);
+    // As Nova 2 Lite said, wrongly, with a discard card whose read-back says it right (eval P10).
+    expect(
+      withoutImpactTalk(
+        'Oh no! The recipe still needs 125 milliliters of milk, and you have 875 milliliters left, so we can carry on with less. Ready for the next step when you are!',
+        namesMilk,
+      ),
+    ).toBe('Oh no! Ready for the next step when you are!');
+    expect(withoutImpactTalk('That spill is a pity. The meal would be short.', namesMilk)).toBe('That spill is a pity.');
   });
 });
 

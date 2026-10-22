@@ -123,8 +123,16 @@ export async function proposeAdjustment(
     card: renderCard(item, input.reason, allocation, touched, new_batch, today, share?.basis ?? null),
   };
   const impact = await sessionImpact(tx, householdId, item, allocation, new_batch);
-  if (impact.some((i) => i.short > 0)) {
-    payload.card.warnings.push(`The meal being cooked would be short of ${item.name}.`);
+  const short = impact.find((i) => i.short > 0)?.short;
+  if (short !== undefined) {
+    // Said by the app, from these numbers: the model's own account got them wrong (eval P10).
+    const amount = speakQuantity(item.name, short, item.base_unit, item.base_unit);
+    payload.card.warnings.push(`The meal being cooked would be ${amount} short.`);
+    payload.card.readback_text = payload.card.readback_text.replace(
+      CONFIRM_PROMPT,
+      `That leaves the meal ${amount} short: you can carry on with less, use a substitute, add ${item.name} to the shopping list, ` +
+        `or cook it another time. ${CONFIRM_PROMPT}`,
+    );
   }
 
   const preconditions: AdjustPreconditions = {

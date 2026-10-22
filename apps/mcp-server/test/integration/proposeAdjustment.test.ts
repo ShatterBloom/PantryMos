@@ -154,7 +154,16 @@ describe('propose_adjustment', () => {
     await startPasta(kitchen, client); // the pasta plans 2 scallions; 4 are in stock
     const p = await ok({ item: 'scallion', delta: -3, reason: 'discard' });
     expect(p.impact_on_active_session).toEqual([{ item: 'scallion', planned: 2, available_after: 1, short: 1 }]);
-    expect(p.card.warnings).toEqual(['The meal being cooked would be short of scallion.']);
+    expect(p.card.warnings).toEqual(['The meal being cooked would be 1 scallion short.']);
+    // The read-back says it, exactly, before the question (eval P10: the model's account was wrong).
+    expect(p.card.readback_text).toBe(
+      "I'll record that 3 scallions were thrown out. That leaves the meal 1 scallion short: you can carry on with less, " +
+        'use a substitute, add scallion to the shopping list, or cook it another time. Say confirm, or tell me what to change.',
+    );
+    // Enough left: nothing about the meal.
+    const some = await ok({ item: 'scallion', delta: -1, reason: 'discard' });
+    expect(some.impact_on_active_session).toEqual([{ item: 'scallion', planned: 2, available_after: 3, short: 0 }]);
+    expect(some.card.readback_text).toBe("I'll record that 1 scallion was thrown out. Say confirm, or tell me what to change.");
     expect((await ok({ item: 'egg', delta: -1 })).impact_on_active_session).toEqual([]);
   });
 
