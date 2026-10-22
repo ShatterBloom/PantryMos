@@ -1,7 +1,18 @@
 // Inputs the app sets and limits it enforces on tool calls, whatever the model asks for.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '@pantrymos/mcp-server';
-import { addScallionSubstitute, createDemoKitchen, type DemoKitchen, mcpTestConfig, PASTA_STOCK, stockKitchen } from '../../../../test/fixtures.ts';
+import {
+  addScallionSubstitute,
+  callWrite,
+  confirmCard,
+  connectMcpClient,
+  createDemoKitchen,
+  type DemoKitchen,
+  eatMeal,
+  mcpTestConfig,
+  PASTA_STOCK,
+  stockKitchen,
+} from '../../../../test/fixtures.ts';
 import { agentRows, callTools, chat, lastToolResults, say, startAgent, type TestAgent } from '../fixtures.ts';
 
 describe('tool-call guards', () => {
@@ -43,6 +54,39 @@ describe('tool-call guards', () => {
     agent.model.push(callTools(['next_step'], ['next_step']), say('OK.'));
     await chat(agent, 'next, next');
     expect(await step()).toBe(4);
+  });
+
+  it("says the user chose an undo's scope only when their words say which, whatever the model claims (eval P16)", async () => {
+    // A corrected meal: "undo that" could mean the correction or the whole meal (PRD FR-21).
+    await stockKitchen(kitchen, { egg: 6, tomato: 4, 'olive oil': 100, scallion: 2 });
+    const mcp = await connectMcpClient(servers, kitchen.token);
+    const { sessionId } = await eatMeal(servers, mcp, 'tomato egg stir-fry');
+    const revision = (await callWrite(mcp, 'propose_consumption_revision', { usage: [{ item: 'egg', quantity: 4 }] })).structuredContent as {
+      proposal_id: string;
+      version: number;
+    };
+    expect((await confirmCard(servers, revision, revision.version)).status).toBe(200);
+    await mcp.close();
+
+    // Nova went straight for the meal by id, claiming the choice; the server asks instead.
+    agent.model.push(callTools(['propose_undo', { target: sessionId, scope: 'session', scope_chosen_by_user: true }]), (req) => {
+      expect(lastToolResults(req)[0]).toMatchObject({ code: 'ambiguous_undo', ask: 'Undo just the correction, or the whole tomato egg stir-fry?' });
+      return say('Undo just the correction, or the whole tomato egg stir-fry?');
+    });
+    await chat(agent, 'Undo that');
+
+    agent.model.push(callTools(['propose_undo', { target: sessionId, scope: 'session' }]), (req) => {
+      expect(lastToolResults(req)[0]).toMatchObject({ kind: 'undo', scope: 'session' });
+      return say('OK.');
+    });
+    await chat(agent, 'The whole meal');
+
+    const inputs = await agentRows<{ final_input: { scope_chosen_by_user: boolean } }>(
+      agent,
+      `SELECT final_input FROM agent.tool_calls WHERE conversation_id = $1 AND name = 'propose_undo' ORDER BY created_at`,
+      [agent.conversationId],
+    );
+    expect(inputs.map((r) => r.final_input.scope_chosen_by_user)).toEqual([false, true]);
   });
 
   it('says a substitute was chosen only when the user named it, whatever the model claims (eval G3)', async () => {

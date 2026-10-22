@@ -43,8 +43,9 @@ describe('propose_undo', () => {
   });
 
   const undo = (args: Record<string, unknown>) => callWrite(client, 'propose_undo', args);
+  // A card is made once the user said which, when a correction makes "undo that" ambiguous.
   const ok = async (args: Record<string, unknown>) => {
-    const res = await undo(args);
+    const res = await undo({ scope_chosen_by_user: true, ...args });
     expect(parseErrorResult(res)).toBeNull();
     return res.structuredContent as unknown as Proposed;
   };
@@ -191,9 +192,30 @@ describe('propose_undo', () => {
     expect(outcome).toEqual([{ outcome: 'stale' }]);
   });
 
+  it('asks which, the correction or the whole meal, by any target, until the user said (PRD FR-21, eval P16)', async () => {
+    const { revisionOp, operationId, sessionId } = await workedExample();
+    const which = {
+      code: 'ambiguous_undo',
+      ask: 'Undo just the correction, or the whole tomato egg stir-fry?',
+      options: [
+        { scope: 'operation', target: revisionOp, label: 'undo the correction' },
+        { scope: 'session', target: sessionId, label: 'undo the whole tomato egg stir-fry' },
+      ],
+    };
+    for (const args of [
+      { target: 'last' },
+      { target: revisionOp, scope: 'operation' },
+      { target: sessionId, scope: 'session' },
+      { target: operationId, scope: 'session' },
+      { target: 'last', scope_chosen_by_user: false },
+    ]) {
+      expect(parseErrorResult(await undo(args)), JSON.stringify(args)).toMatchObject(which);
+    }
+  });
+
   it('asks to undo the whole meal when its consume has live corrections', async () => {
     const { operationId, sessionId } = await workedExample();
-    expect(parseErrorResult(await undo({ target: operationId, scope: 'operation' }))).toMatchObject({
+    expect(parseErrorResult(await undo({ target: operationId, scope: 'operation', scope_chosen_by_user: true }))).toMatchObject({
       code: 'has_dependents',
       options: [{ scope: 'session', target: sessionId, label: 'undo the whole meal' }],
     });

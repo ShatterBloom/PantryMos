@@ -16,7 +16,17 @@ import { findSession, itemInfo, type SessionRow } from '../db/sessions.ts';
 import type { Tx } from '../db/tx.ts';
 import { type Card, CONFIRM_PROMPT } from '../domain/card.ts';
 import { PantryError } from '../domain/errors.ts';
-import { checkNotNegative, defaultScope, describeReversal, type ItemChange, netChanges, type Reversal, reversalsOf, type UndoScope } from '../domain/undo.ts';
+import {
+  checkNotNegative,
+  defaultScope,
+  describeReversal,
+  type ItemChange,
+  netChanges,
+  type Reversal,
+  reversalsOf,
+  type UndoScope,
+  whichUndo,
+} from '../domain/undo.ts';
 import { speakQuantity } from '../domain/speech.ts';
 import { roundQuantity } from '../domain/units.ts';
 
@@ -25,6 +35,10 @@ export const UndoInputShape = {
     .union([z.literal('last'), z.uuid()])
     .describe('"last" for the most recent change, an operation_id / session_id from list_recent_operations, or the proposal_id of a confirmed card.'),
   scope: z.enum(['operation', 'session']).optional().describe('"session" undoes a whole meal; "operation" one change.'),
+  scope_chosen_by_user: z
+    .boolean()
+    .optional()
+    .describe('Whether the user said which, the correction or the whole meal. Without it, an undo of a corrected meal asks first.'),
 };
 export const UndoInput = z.object(UndoInputShape);
 export type UndoInput = z.infer<typeof UndoInput>;
@@ -96,8 +110,8 @@ export async function proposeUndo(
     conversationId,
     ...(session ? { targetSessionId: session.id } : {}),
     ...(operation && scope === 'operation' ? { targetOperationId: operation.id } : {}),
-    // Edits and Refresh re-plan this exact target, never a later "last".
-    input: { target, scope },
+    // Edits and Refresh re-plan this exact target, never a later "last", and do not ask again.
+    input: { target, scope, scope_chosen_by_user: true },
     payload,
     preconditions,
   });
@@ -115,10 +129,15 @@ async function resolveTarget(tx: Tx, householdId: string, input: UndoInput): Pro
     if (!operation) {
       // Not an operation: a meal's session id.
       if (input.scope === 'operation') throw new PantryError('not_found', 'There is no such change to undo.');
-      return { scope: 'session', operation: null, session: await lockMeal(tx, householdId, input.target) };
+      const session = await lockMeal(tx, householdId, input.target);
+      await askWhenCorrected(tx, input, null, session.id, session.recipe);
+      return { scope: 'session', operation: null, session };
     }
     if (operation.kind === 'undo') throw new PantryError('not_undoable', 'An undo cannot itself be undone; make the change again instead.');
     if (operation.reverted) throw alreadyReverted('That change');
+  }
+  if (operation.session_id !== null && (operation.kind === 'consume' || operation.kind === 'revise_consumption')) {
+    await askWhenCorrected(tx, input, operation.kind === 'revise_consumption' ? operation.id : null, operation.session_id, operation.recipe);
   }
 
   let scope = input.scope ?? defaultScope(operation, input.target === 'last');
@@ -138,6 +157,16 @@ async function resolveTarget(tx: Tx, householdId: string, input: UndoInput): Pro
   }
   const session = operation.session_id === null ? null : await lockMeal(tx, householdId, operation.session_id);
   return { scope, operation, session };
+}
+
+/**
+ * A meal with live corrections, by whatever target the caller reached it (last, the correction's id,
+ * the meal's): unless the user said which, ask (PRD FR-21). The app sets `scope_chosen_by_user`.
+ */
+async function askWhenCorrected(tx: Tx, input: UndoInput, correctionId: string | null, sessionId: string, recipe: string | null): Promise<void> {
+  if (input.scope_chosen_by_user === true) return;
+  const corrections = await liveRevisions(tx, sessionId);
+  if (corrections.length > 0) throw whichUndo(correctionId ?? corrections.at(-1)!, sessionId, recipe);
 }
 
 /** Locks a meal for undo; it must be consumed (a reverted one is already undone). */

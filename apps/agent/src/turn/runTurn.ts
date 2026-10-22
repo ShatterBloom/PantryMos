@@ -232,7 +232,9 @@ async function startTurn(lease: ConversationLease, trigger: TurnTrigger): Promis
  * Inputs the app sets, not the model:
  * - §7.4 `expected_step`: the step the user heard when the turn began, moved on by each step this
  *   turn delivered through start_cooking or a successful next_step ("next, next");
- * - `chosen_by_user` on a substitution: whether the user's own words this turn name the substitute.
+ * - `chosen_by_user` on a substitution: whether the user's own words this turn name the substitute;
+ * - `scope_chosen_by_user` on an undo: whether the user's words this turn say which, the correction
+ *   or the whole meal; otherwise the server asks (PRD FR-21).
  */
 async function injectInputs(
   pool: Pool,
@@ -248,6 +250,7 @@ async function injectInputs(
     input.substitutions = input.substitutions.map((s: Record<string, unknown>) => ({ ...s, chosen_by_user: named(s.to_item) }));
   }
   if (use.name === 'substitute' && input.to_item !== undefined) input.chosen_by_user = named(input.to_item);
+  if (use.name === 'propose_undo') input.scope_chosen_by_user = userText !== null && UNDO_SCOPE_SAID.test(userText);
   if (use.name !== 'next_step') return input;
   delete input.expected_step;
   let step = snapshot?.step_no;
@@ -364,6 +367,9 @@ async function finishTurn(
 
   return { messageId, speech, trace };
 }
+
+/** Words that say which undo: "the whole meal", "just the correction", "everything". */
+export const UNDO_SCOPE_SAID = /\b(?:whole|entire|meal|everything|correction|fix|just|only)\b/i;
 
 /** How many steps the user asked for: one per "next" said ("next, next"), at least one. */
 export function nextsSaid(text: string): number {

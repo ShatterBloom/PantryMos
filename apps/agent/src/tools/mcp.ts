@@ -5,7 +5,10 @@ import type { ToolSpec } from '../model/types.ts';
 import type { ToolOutput } from '../store/toolCalls.ts';
 
 /** Agent-injected inputs (§7.4): removed from the schema the model sees, filled from the turn snapshot. */
-export const INJECTED_INPUTS: Readonly<Record<string, readonly string[]>> = { next_step: ['expected_step'] };
+export const INJECTED_INPUTS: Readonly<Record<string, readonly string[]>> = {
+  next_step: ['expected_step'],
+  propose_undo: ['scope_chosen_by_user'],
+};
 
 export async function mcpToolSpecs(client: Client): Promise<ToolSpec[]> {
   const { tools } = await client.listTools();

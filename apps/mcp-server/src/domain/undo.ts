@@ -30,17 +30,23 @@ export interface Reversal {
  * the whole meal, so it asks; a revision named by id means that correction.
  */
 export function defaultScope(op: UndoableOperation, last: boolean): UndoScope {
-  if (op.kind === 'revise_consumption' && last) {
-    const meal = op.recipe ?? 'meal';
-    throw new PantryError('ambiguous_undo', `The last change was a correction to ${meal}.`, {
-      ask: `Undo just the correction, or the whole ${meal}?`,
-      options: [
-        { scope: 'operation', target: op.id, label: 'undo the correction' },
-        { scope: 'session', target: op.session_id, label: `undo the whole ${meal}` },
-      ],
-    });
-  }
+  if (op.kind === 'revise_consumption' && last) throw whichUndo(op.id, op.session_id!, op.recipe);
   return op.kind === 'consume' ? 'session' : 'operation';
+}
+
+/**
+ * "Undo that" on a corrected meal could mean the correction or the whole meal (PRD FR-21): the user
+ * says which, never the caller on their behalf.
+ */
+export function whichUndo(correctionId: string, sessionId: string, recipe: string | null): PantryError {
+  const meal = recipe ?? 'meal';
+  return new PantryError('ambiguous_undo', `The meal was corrected: undo just the correction, or the whole ${meal}?`, {
+    ask: `Undo just the correction, or the whole ${meal}?`,
+    options: [
+      { scope: 'operation', target: correctionId, label: 'undo the correction' },
+      { scope: 'session', target: sessionId, label: `undo the whole ${meal}` },
+    ],
+  });
 }
 
 /** Each live event reversed by an equal and opposite one. */

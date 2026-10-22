@@ -99,7 +99,7 @@ export const CASES: readonly EvalCase[] = [
   },
   {
     id: 'P2a',
-    title: 'Correction, then "undo that" undoes the correction',
+    title: 'Correction, then "undo that, just the correction" undoes the correction',
     stock: async (env) => {
       await stockKitchen(env.kitchen, STIR_FRY_STOCK);
       await eatMeal(env.servers, env.mcp, 'tomato egg stir-fry');
@@ -107,7 +107,9 @@ export const CASES: readonly EvalCase[] = [
     async run(ctx) {
       await ctx.say('Actually I used 4 eggs for the stir-fry, not 3');
       await ctx.answer('yes');
-      await ctx.say('Undo that');
+      // Said which: no question (bare "undo that" asks first, P16).
+      await ctx.say('Undo that, just the correction');
+      await ctx.card();
       await ctx.answer('yes');
     },
     expect: {
