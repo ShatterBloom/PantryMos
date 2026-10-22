@@ -23,6 +23,16 @@ declare module 'fastify' {
 const loggerOptions = (enabled: boolean) =>
   enabled ? { level: process.env.LOG_LEVEL ?? 'info' } : false;
 
+/** A fault is logged, never described to the client: its message can name tables or queries. */
+function hideFaults(app: FastifyInstance): void {
+  app.setErrorHandler((err: { statusCode?: number }, request, reply) => {
+    const status = err.statusCode ?? 500;
+    if (status < 500) return reply.send(err);
+    request.log.error({ err }, 'request failed');
+    return reply.code(500).send({ error: 'internal_error' });
+  });
+}
+
 /**
  * Public-facing MCP listener (§11.1). Only POST /mcp exists; internal routes live on a
  * separate listener, so they are unreachable here by construction.
@@ -30,6 +40,7 @@ const loggerOptions = (enabled: boolean) =>
 export async function buildMcpApp(config: Config, pool: Pool, log = true): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: config.bodyLimitBytes, logger: loggerOptions(log) });
   const proposeLimiter = new FixedWindowLimiter(config.proposeRatePerMinute, 60_000);
+  hideFaults(app);
 
   app.addHook('onRequest', async (request, reply) => {
     if (!originAllowed(request.headers.origin, config.allowedOrigins)) {
@@ -83,6 +94,7 @@ export async function buildMcpApp(config: Config, pool: Pool, log = true): Promi
 /** Internal listener (§11.1, §11.3): never exposed; every route requires the service token. */
 export async function buildInternalApp(config: Config, pool: Pool, log = true): Promise<FastifyInstance> {
   const app = Fastify({ bodyLimit: config.bodyLimitBytes, logger: loggerOptions(log) });
+  hideFaults(app);
 
   app.addHook('onRequest', async (request, reply) => {
     const provided = request.headers['x-service-token'];

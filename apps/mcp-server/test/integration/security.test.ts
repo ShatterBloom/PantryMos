@@ -1,7 +1,8 @@
 // Security tests S1–S5 (+ MCP rate limit) — IMPLEMENTATION_PLAN §9.2, §11.
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type RunningServers, startServers } from '../../src/app.ts';
+import { buildInternalApp, buildMcpApp, type RunningServers, startServers } from '../../src/app.ts';
+import type { Pool } from '../../src/db/pool.ts';
 import {
   createHousehold,
   type HouseholdFixture,
@@ -107,6 +108,28 @@ describe('mcp-server security', () => {
   it('rejects GET /mcp (stateless server, no SSE stream)', async () => {
     const res = await fetch(`${mcpUrl}/mcp`, { headers: { authorization: `Bearer ${hh.token}` } });
     expect(res.status).toBe(405);
+  });
+});
+
+describe('mcp-server faults', () => {
+  // A database that fails the way Postgres does, naming what it failed on.
+  const broken = { query: async () => Promise.reject(new Error('relation "pantry.batches" does not exist')) } as unknown as Pool;
+
+  it('answers 500 without the fault on either listener', async () => {
+    const mcp = await buildMcpApp(mcpTestConfig(), broken, false);
+    const internal = await buildInternalApp(mcpTestConfig(), broken, false);
+    try {
+      const replies = [
+        await mcp.inject({ method: 'POST', url: '/mcp', headers: { ...MCP_HEADERS, authorization: 'Bearer pmk_x' }, payload: INITIALIZE_BODY }),
+        await internal.inject({ method: 'GET', url: '/internal/health', headers: { 'x-service-token': TEST_SERVICE_TOKEN } }),
+      ];
+      for (const reply of replies) {
+        expect(reply.statusCode).toBe(500);
+        expect(reply.json()).toEqual({ error: 'internal_error' });
+      }
+    } finally {
+      await Promise.all([mcp.close(), internal.close()]);
+    }
   });
 });
 
