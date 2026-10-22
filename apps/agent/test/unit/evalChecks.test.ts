@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ABSENT, checkArgs, checkClaims, checkDb, checkTools, contains, sameItem, setToOf, stockDiff, toBase, type ToolCall } from '../../eval/checks.ts';
+import { ABSENT, bothChecks, checkArgs, checkClaims, checkDateWords, checkDb, checkTools, contains, sameItem, setToOf, stockDiff, toBase, type ToolCall } from '../../eval/checks.ts';
 
 const call = (name: string, input: Record<string, unknown> = {}, status: ToolCall['status'] = 'success'): ToolCall => ({ name, input, status });
 
@@ -162,5 +162,30 @@ describe('units and names', () => {
     expect(sameItem('tomatoes', 'tomato')).toBe(true);
     expect(sameItem('garlic cloves', 'garlic clove')).toBe(true);
     expect(sameItem('olive oil', 'oil')).toBe(false);
+  });
+});
+
+describe('checkDateWords', () => {
+  it('fails a reply that calls an estimated date an expiry, and only that', () => {
+    const replies = [
+      'Your spinach expires tomorrow. The milk is best by Oct 24.',
+      'The milk expires on Oct 24, and the garlic cloves are fine.',
+      'The garlic cloves expire soon.',
+    ];
+    expect(checkDateWords(replies, ['spinach', 'garlic clove'])).toEqual({
+      verdict: 'fail',
+      notes: [
+        'reply 0: calls the estimated date of spinach an expiry: "Your spinach expires tomorrow."',
+        'reply 2: calls the estimated date of garlic clove an expiry: "The garlic cloves expire soon."',
+      ],
+    });
+    expect(checkDateWords(['Spinach, stored for 4 days, should be used first.'], ['spinach']).verdict).toBe('pass');
+  });
+
+  it('combines with another check, keeping the worse verdict', () => {
+    const fail = { verdict: 'fail' as const, notes: ['a'] };
+    const unverified = { verdict: 'unverified' as const, notes: ['b'] };
+    expect(bothChecks(unverified, fail)).toEqual({ verdict: 'fail', notes: ['b', 'a'] });
+    expect(bothChecks({ verdict: 'pass', notes: [] }, unverified)).toEqual({ verdict: 'unverified', notes: ['b'] });
   });
 });

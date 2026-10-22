@@ -2,7 +2,7 @@
 // Each script plays the user; the expectations are what must hold whatever Mos says on the way.
 // G7, G9, G11 and G12 test the turn machinery, not the model; they run with a scripted model in
 // the integration suite (proactive.test.ts, resume.test.ts).
-import { addScallionSubstitute, createBatch, eatMeal, householdToday, PASTA_STOCK, stockKitchen } from '../../../test/fixtures.ts';
+import { addScallionSubstitute, createBatch, eatMeal, householdToday, PASTA_STOCK, stockKitchen, withAdmin } from '../../../test/fixtures.ts';
 import { ABSENT } from './checks.ts';
 import { CaseAborted, type CaseContext, type EvalCase, type SetupEnv } from './harness.ts';
 
@@ -36,6 +36,9 @@ const expiringSpinach =
       package_date_type: 'use_by',
     });
   };
+
+/** What Mos said to the user's last action, as one text. */
+const lastReply = (ctx: CaseContext) => ctx.turns.at(-1)?.replies.join(' ') ?? '';
 
 /** Says "next" until the session reaches `step`; aborts if a "next" does not advance. */
 async function nextUntil(ctx: CaseContext, step: number): Promise<void> {
@@ -220,6 +223,113 @@ export const CASES: readonly EvalCase[] = [
     expect: {
       tools: ['propose_intake'],
       db: { stock: { egg: 36 }, operations: ['intake', 'intake'] },
+    },
+  },
+  {
+    id: 'P12',
+    title: 'After a spill leaves too little, finishing asks how much was used',
+    stock: { ...PASTA_STOCK, milk: 400 },
+    async run(ctx) {
+      await ctx.say("Let's cook the creamy spinach pasta for three", 'voice');
+      await ctx.say('I spilled 300 ml of milk', 'voice');
+      await ctx.card();
+      await ctx.answer('yes');
+      await nextUntil(ctx, 6);
+      await ctx.answer('next');
+      ctx.expect('reply', /\bhow much\b/i.test(lastReply(ctx)), `the last "next" did not ask how much milk was used: "${lastReply(ctx)}"`);
+      await ctx.say('I used all the milk I had', 'voice');
+      await ctx.card();
+      await ctx.answer('confirm');
+    },
+    expect: {
+      tools: ['start_cooking', 'propose_adjustment', 'propose_consumption'],
+      args: [{ tool: 'propose_consumption', accepted: true, args: { overrides: [{ item: /milk/i, quantity: 100 }] } }],
+      // 300 ml spilled, the 100 ml left used: all 400.
+      db: { stock: { ...PASTA_USED, milk: -400 }, operations: ['adjust', 'consume'] },
+    },
+  },
+  {
+    id: 'P13',
+    title: 'What I have and what to use first, with honest dates',
+    stock: async ({ kitchen }) => {
+      await stockKitchen(kitchen, { spinach: 300 }, 4);
+      await stockKitchen(kitchen, { egg: 6 });
+      const today = await householdToday(kitchen.householdId);
+      await createBatch(kitchen.householdId, kitchen.items.milk!, {
+        quantity: 1000,
+        purchased_at: today,
+        package_date: new Date(Date.parse(`${today}T00:00:00Z`) + 2 * 86_400_000).toISOString().slice(0, 10),
+        package_date_type: 'best_by',
+      });
+    },
+    async run(ctx) {
+      await ctx.say('Do I have any salmon?', 'voice');
+      const salmon = lastReply(ctx);
+      ctx.expect('reply', /\b(?:no|don't|do not|not)\b/i.test(salmon) && !/\byou (?:still )?have (?:some )?salmon\b/i.test(salmon), `salmon: "${salmon}"`);
+      await ctx.say('What should I use first?', 'voice');
+      // Spinach is due first (an estimate: no package date), then the milk (best by, from the package).
+      const first = lastReply(ctx);
+      ctx.expect('reply', /spinach/i.test(first) && /milk/i.test(first), `use first: "${first}"`);
+    },
+    expect: { tools: ['list_inventory', 'expiring_soon'], forbid: PROPOSE, db: NONE },
+  },
+  {
+    id: 'P14',
+    title: 'A step timer declined, then started later by voice',
+    stock: STIR_FRY_STOCK,
+    async run(ctx) {
+      await ctx.say('Cook the tomato egg stir-fry', 'voice');
+      await nextUntil(ctx, 2);
+      await ctx.heard();
+      await ctx.say('not yet', 'voice');
+      const running = async () =>
+        (await ctx.agent.pool.query(`SELECT seconds FROM agent.timers WHERE conversation_id = $1 AND status = 'running'`, [ctx.agent.conversationId])).rows;
+      ctx.expect('db', (await running()).length === 0, '"not yet" started a timer');
+      await ctx.say('Mos, start the timer', 'voice');
+      const timers = await running();
+      ctx.expect('db', timers.length === 1 && timers[0]!.seconds === 60, `after "start the timer": ${JSON.stringify(timers)}`);
+    },
+    expect: { tools: ['start_cooking', 'next_step', 'start_timer'], forbid: PROPOSE, args: [{ tool: 'start_timer', args: { seconds: 60 } }], db: NONE },
+  },
+  {
+    id: 'P15',
+    title: 'A recipe short of one egg; the shortfall goes on the shopping list',
+    stock: { egg: 2, tomato: 4, 'olive oil': 100, scallion: 2 },
+    async run(ctx) {
+      await ctx.say('Can I make the tomato egg stir-fry?', 'voice');
+      await ctx.say('Add that to my shopping list', 'voice');
+      const { rows } = await withAdmin((admin) =>
+        admin.query<{ item: string; quantity: string | null }>(
+          `SELECT i.name AS item, s.quantity::text FROM pantry.shopping_list_items s JOIN pantry.items i ON i.id = s.item_id
+            WHERE s.household_id = $1 AND NOT s.done`,
+          [ctx.env.kitchen.householdId],
+        ),
+      );
+      ctx.expect('db', rows.length === 1 && rows[0]!.item === 'egg' && Number(rows[0]!.quantity) === 1, `shopping list: ${JSON.stringify(rows)}`);
+    },
+    expect: { tools: ['suggest_recipes', 'add_to_shopping_list'], forbid: ['start_cooking', ...PROPOSE], db: NONE },
+  },
+  {
+    id: 'P16',
+    title: '"Undo that" after a correction asks which, then undoes what the user picked',
+    stock: async (env) => {
+      await stockKitchen(env.kitchen, STIR_FRY_STOCK);
+      await eatMeal(env.servers, env.mcp, 'tomato egg stir-fry');
+    },
+    async run(ctx) {
+      await ctx.say('Actually I used 4 eggs for the stir-fry, not 3', 'voice');
+      await ctx.answer('yes');
+      await ctx.say('Undo that', 'voice');
+      // PRD FR-21: the last change was a correction, so "that" could be it or the whole meal.
+      ctx.expect('reply', /\bwhole\b/i.test(lastReply(ctx)) && /\bcorrection\b/i.test(lastReply(ctx)), `"undo that" did not ask which: "${lastReply(ctx)}"`);
+      await ctx.say('The whole meal', 'voice');
+      await ctx.card();
+      await ctx.answer('yes');
+    },
+    expect: {
+      tools: ['propose_consumption_revision', 'propose_undo'],
+      args: [{ tool: 'propose_undo', accepted: true, args: { scope: 'session' } }],
+      db: { stock: negate(STIR_FRY_USED), operations: ['revise_consumption', 'undo'] },
     },
   },
   {

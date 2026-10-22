@@ -225,3 +225,35 @@ export function checkClaims(
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
+
+const EXPIRY = /\bexpir(?:e|es|ed|ing|y|ation)\b/i;
+
+/**
+ * Date honesty (story B3, PRD FR-7): an item whose batches have no package date has only an
+ * estimated priority date, which Mos must never call an expiry. `estimated` are those items' names;
+ * a sentence that names one and talks of expiring fails. A deterministic part of the reply check.
+ */
+export function checkDateWords(replies: readonly string[], estimated: readonly string[]): CheckResult {
+  const notes: string[] = [];
+  replies.forEach((reply, i) => {
+    for (const sentence of reply.split(/(?<=[.!?])\s+/)) {
+      // Clause by clause, so "the milk expires Oct 24, and the spinach is fine" blames only the milk.
+      // A pronoun ("it expires") is not followed back: the check misses some, it does not invent.
+      const named = new Set<string>();
+      for (const clause of sentence.split(/[,;:]|\band\b|\bbut\b/i)) {
+        if (!EXPIRY.test(clause)) continue;
+        // One- and two-word names: "spinach", "garlic cloves".
+        const words = clause.toLowerCase().split(/[^a-z]+/);
+        for (const item of estimated) if (words.some((w, j) => sameItem(w, item) || sameItem(`${w} ${words[j + 1] ?? ''}`, item))) named.add(item);
+      }
+      for (const item of named) notes.push(`reply ${i}: calls the estimated date of ${item} an expiry: "${sentence}"`);
+    }
+  });
+  return result(notes);
+}
+
+/** Two results as one: the worse verdict, all the notes. */
+export function bothChecks(a: CheckResult, b: CheckResult): CheckResult {
+  const rank: Record<Verdict, number> = { pass: 0, unverified: 1, fail: 2 };
+  return { verdict: rank[a.verdict] >= rank[b.verdict] ? a.verdict : b.verdict, notes: [...a.notes, ...b.notes] };
+}

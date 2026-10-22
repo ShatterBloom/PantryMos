@@ -8,10 +8,12 @@ import { DEFAULT_WORKER_TIMING } from '../src/workers.ts';
 import { ack, cardAction, chat, messages, type Outbound, startAgentWith, type TestAgent } from '../test/fixtures.ts';
 import {
   type ArgExpectation,
+  bothChecks,
   type CheckResult,
   type Claim,
   checkArgs,
   checkClaims,
+  checkDateWords,
   checkDb,
   checkTools,
   type CommittedOp,
@@ -75,12 +77,14 @@ export interface Turn {
 export interface Findings {
   tools: string[];
   db: string[];
+  /** What Mos said that the case script knows is wrong, e.g. claiming salmon nobody has. */
+  reply: string[];
 }
 
 /** What a case script can do: everything a user or the world around them can. */
 export class CaseContext {
   readonly turns: Turn[] = [];
-  readonly findings: Findings = { tools: [], db: [] };
+  readonly findings: Findings = { tools: [], db: [], reply: [] };
   readonly agent: TestAgent<RecordingModel>;
   readonly env: SetupEnv;
   private seen = 0;
@@ -290,6 +294,7 @@ export async function runCase(servers: RunningServers, model: ModelClient, extra
   } catch (err) {
     reply = { verdict: 'unverified', notes: [`claim extractor failed: ${(err as Error).message}`] };
   }
+  reply = withFindings(bothChecks(reply, checkDateWords(replies, await estimatedItems(kitchen.householdId))), ctx.findings.reply);
 
   return {
     id: c.id,
@@ -315,6 +320,18 @@ export async function runCase(servers: RunningServers, model: ModelClient, extra
       output: agent.model.exchanges.reduce((s, e) => s + (e.response.usage?.outputTokens ?? 0), 0),
     },
   };
+}
+
+/** Items whose batches all lack a package date: their dates are estimates, never expiries. */
+async function estimatedItems(householdId: string): Promise<string[]> {
+  return withAdmin(async (admin) => {
+    const { rows } = await admin.query<{ name: string }>(
+      `SELECT i.name FROM pantry.items i JOIN pantry.batches b ON b.item_id = i.id
+        WHERE i.household_id = $1 GROUP BY i.name HAVING bool_and(b.package_date IS NULL)`,
+      [householdId],
+    );
+    return rows.map((r) => r.name);
+  });
 }
 
 /** The household's stock per item, and its operations in commit order with what each changed. */
