@@ -56,6 +56,13 @@ describe('Bedrock Converse mapping', () => {
         output: { message: { role: 'assistant', content: [{ text: 'Okay, the user is cooking the stir-fry. The user said "next", so…' }] } },
       }),
     ).toEqual({ stopReason: 'malformed_model_output', content: [] });
+    // The same, run on to the token cap (eval P1).
+    expect(
+      fromConverseOutput({
+        stopReason: 'max_tokens',
+        output: { message: { role: 'assistant', content: [{ text: "Okay, the user said they're done. I need to propose the consumption. But" }] } },
+      }),
+    ).toEqual({ stopReason: 'max_tokens', content: [] });
     expect(fromConverseOutput({ stopReason: 'end_turn', output: undefined, usage: { inputTokens: 900, outputTokens: 40, totalTokens: 940 } })).toEqual({
       stopReason: 'end_turn',
       content: [],

@@ -58,13 +58,14 @@ const THINKING = /<thinking>[\s\S]*?(?:<\/thinking>|$)/g;
 
 /**
  * The model's reply in the turn loop's shape; blocks it does not use (reasoning, images) are dropped.
- * A malformed reply is dropped whole: Nova's was its chain of thought with no tags (eval P1), so it
- * comes back empty and the turn loop asks again.
+ * A malformed reply, or one cut off by the token cap, is dropped whole: Nova's was its chain of
+ * thought with no tags (eval P1), and nothing meant to be said aloud runs to the cap. It comes back
+ * empty and the turn loop asks again.
  */
 export function fromConverseOutput(output: Pick<ConverseCommandOutput, 'stopReason' | 'output'> & Partial<Pick<ConverseCommandOutput, 'usage'>>): ModelResponse {
   const content: ContentBlock[] = [];
-  const malformed = output.stopReason?.startsWith('malformed_') ?? false;
-  for (const block of malformed ? [] : (output.output?.message?.content ?? [])) {
+  const broken = output.stopReason === 'max_tokens' || (output.stopReason?.startsWith('malformed_') ?? false);
+  for (const block of broken ? [] : (output.output?.message?.content ?? [])) {
     if (block.text !== undefined) {
       const text = block.text.replace(THINKING, '').trim();
       if (text !== '') content.push({ text });
