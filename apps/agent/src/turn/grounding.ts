@@ -32,6 +32,12 @@ const TIMER_CLAIMS: readonly RegExp[] = [
 
 const BULLET = /^(?:[-*•]|\d+[.)])\s+/;
 
+/**
+ * Stands in history for a reply that had nothing left to say (Converse refuses an empty message).
+ * The model copies it at the start of later replies, so it is never said.
+ */
+export const NO_REPLY = '(no reply)';
+
 export interface Grounded {
   text: string;
   /** Sentences left out because they claim a stock change nothing in the turn backs. */
@@ -145,7 +151,7 @@ function spoken(text: string): string {
     if (items.length > 0) out.push(`${items.join(', ')}.`);
     items = [];
   };
-  for (const raw of text.replace(/\*\*|__|`/g, '').split('\n')) {
+  for (const raw of text.replaceAll(NO_REPLY, '').replace(/\*\*|__|`/g, '').split('\n')) {
     const line = raw.trim().replace(/^#+\s*/, '');
     if (BULLET.test(line)) {
       items.push(line.replace(BULLET, '').replace(/[.,;]$/, '').replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase()));

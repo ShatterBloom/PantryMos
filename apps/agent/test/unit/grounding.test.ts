@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ground, withoutQuestions, withoutRecital, withoutStepRecital } from '../../src/turn/grounding.ts';
+import { ground, NO_REPLY, withoutQuestions, withoutRecital, withoutStepRecital } from '../../src/turn/grounding.ts';
 
 describe('ground', () => {
   it('leaves out a claim that the stock changed when no commit backs it', () => {
@@ -68,6 +68,12 @@ describe('ground', () => {
       'The meal would be short of milk. I can offer three ways to fix this: make fewer servings, use a substitute ingredient, add milk to your shopping list. Which would you like?',
     );
     expect(ground('## Options\n1. BLT sandwich.\n2) Omelette', { committed: false }).text).toBe('Options BLT sandwich, omelette.');
+  });
+
+  it("never says the history's stand-in for an empty reply", () => {
+    // Nova copied it from earlier turns whose replies had nothing left (demo walkthrough).
+    expect(ground(NO_REPLY, { committed: false }).text).toBe('');
+    expect(ground(`${NO_REPLY} Got it.`, { committed: false }).text).toBe('Got it.');
   });
 
   it('leaves out a claim that a timer runs unless the turn started one', () => {

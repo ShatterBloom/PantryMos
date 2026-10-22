@@ -13,7 +13,7 @@ import { closeOpenWindows } from '../store/windows.ts';
 import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
-import { ground, withoutQuestions, withoutRecital, withoutStepRecital } from './grounding.ts';
+import { ground, NO_REPLY, withoutQuestions, withoutRecital, withoutStepRecital } from './grounding.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 import { eventBlock, fallbackSpeech, NOT_CHANGED, TURN_FAILED, timerOffer } from './speech.ts';
 
@@ -419,7 +419,7 @@ export function toModelMessages(messages: readonly Message[]): Message[] {
     else merged.push({ role: m.role, content: [...content] });
   }
   for (const m of merged) {
-    if (m.content.length === 0) m.content.push({ text: m.role === 'assistant' ? '(no reply)' : '(no input)' });
+    if (m.content.length === 0) m.content.push({ text: m.role === 'assistant' ? NO_REPLY : '(no input)' });
     // Tool results first: Converse wants them right after the toolUse they answer.
     m.content.sort((a, b) => Number(isToolResult(b)) - Number(isToolResult(a)));
   }
