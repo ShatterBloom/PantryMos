@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { localToolSpecs } from '../../src/tools/local.ts';
 import { mentions, nextsSaid, toModelMessages } from '../../src/turn/runTurn.ts';
-import { duration, eventBlock, fallbackSpeech, timerOffer } from '../../src/turn/speech.ts';
+import { duration, eventBlock, fallbackSpeech, timeLeft, timerOffer } from '../../src/turn/speech.ts';
 
 describe('toModelMessages', () => {
   it('merges consecutive messages of one role, results first, and drops empty text', () => {
@@ -40,6 +40,8 @@ describe('speech templates', () => {
     expect(duration(480)).toBe('8 minutes');
     expect(duration(90)).toBe('90 seconds');
     expect(timerOffer(480)).toBe('This step takes 8 minutes — start a timer?');
+    // A running timer's time left, rounded to the minute.
+    expect([599, 570, 75, 120, 100].map(timeLeft)).toEqual(['about 10 minutes', 'about 10 minutes', '75 seconds', '2 minutes', 'about 2 minutes']);
   });
 
   it('writes each event as an [app event] block, and a fallback for when the turn keeps failing', () => {

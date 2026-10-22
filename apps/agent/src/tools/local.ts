@@ -12,6 +12,7 @@ import {
   type Timer,
   timerById,
 } from '../store/timers.ts';
+import { duration, timeLeft } from '../turn/speech.ts';
 
 const Label = z.string().trim().min(1).max(40).regex(/^[^\p{Cc}]*$/u);
 const TimerTarget = z.object({ timer_id: z.uuid().optional(), label: Label.optional() }).strict();
@@ -44,12 +45,11 @@ const fail = (code: string, message: string, details: Record<string, unknown> = 
   text: [message, details.ask].filter(Boolean).join(' '),
 });
 
-const minutes = (s: number) => (s % 60 === 0 ? `${s / 60} minute${s === 60 ? '' : 's'}` : `${s} seconds`);
 const describe = (t: Timer) =>
   t.status === 'running'
-    ? `${t.label}: ${minutes(t.remaining_seconds!)} left`
+    ? `${t.label}: ${timeLeft(t.remaining_seconds!)} left`
     : t.status === 'paused'
-      ? `${t.label}: paused with ${minutes(t.remaining_seconds!)} left`
+      ? `${t.label}: paused with ${timeLeft(t.remaining_seconds!)} left`
       : `${t.label}: ${t.status}`;
 const timerOut = (t: Timer) => ({ timer_id: t.id, label: t.label, status: t.status, seconds: t.seconds, remaining_seconds: t.remaining_seconds });
 
@@ -67,7 +67,7 @@ export async function runLocalTool(
   if (name === 'start_timer') {
     const { label, seconds } = parsed.data as { label: string; seconds: number };
     const timer = await startTimer(q, { conversationId, requestId, label, seconds });
-    return { isError: false, data: timerOut(timer), text: `Timer started: ${label}, ${minutes(seconds)}.` };
+    return { isError: false, data: timerOut(timer), text: `Timer started: ${label}, ${duration(seconds)}.` };
   }
   if (name === 'list_timers') {
     const timers = await activeTimers(q, conversationId);

@@ -7,6 +7,9 @@ export const duration = (seconds: number) => {
   return `${m} minute${m === 1 ? '' : 's'}`;
 };
 
+/** Time left on a running timer, which is rarely whole minutes: "about 10 minutes", not "599 seconds" (eval G10). */
+export const timeLeft = (seconds: number) => (seconds < 90 || seconds % 60 === 0 ? duration(seconds) : `about ${duration(Math.round(seconds / 60) * 60)}`);
+
 /** §8.6: the offer appended after a step that has a duration. */
 export const timerOffer = (seconds: number) => `This step takes ${duration(seconds)} — start a timer?`;
 
