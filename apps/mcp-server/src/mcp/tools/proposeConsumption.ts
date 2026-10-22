@@ -13,7 +13,8 @@ export function registerProposeConsumption(server: McpServer, ctx: ToolContext):
       description:
         'Use when the user says they are done cooking, or says "next" on the last step: creates the card of what was ' +
         'used, taken from the oldest batches first. Does NOT change inventory: the user must confirm the card in the app. ' +
-        'Use overrides when the user says they used a different amount, e.g. [{"item": "egg", "quantity": 3}]; 0 removes a line.',
+        'Use overrides when the user says they used a different amount, e.g. [{"item": "egg", "quantity": 3}]; 0 removes a line. ' +
+        'If less of an item is left than the recipe uses, the result asks how much was used: ask the user that, then pass the answer as an override.',
       inputSchema: {
         session_id: z.uuid().optional(),
         overrides: ConsumeOverrides.optional(),

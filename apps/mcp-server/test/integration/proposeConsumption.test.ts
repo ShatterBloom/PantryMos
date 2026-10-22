@@ -7,6 +7,7 @@ import { type RunningServers, startServers } from '../../src/app.ts';
 import { addDays, formatShort } from '../../src/domain/dates.ts';
 import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
+  adjustStock,
   callWrite,
   connectMcpClient,
   createBatch,
@@ -154,6 +155,25 @@ describe('propose_consumption', () => {
     });
     expect(parseErrorResult(await propose({ overrides: [{ item: 'unobtainium', quantity: 1 }] }))?.code).toBe('unknown_item');
     expect((await sessionRow()).state).toBe('cooking');
+  });
+
+  it('asks what was used when less is left than the plan uses, as after a spill', async () => {
+    await adjustStock(servers, client, { item: 'milk', delta: -1825, reason: 'discard' });
+    expect(parseErrorResult(await propose())).toMatchObject({
+      code: 'needs_clarification',
+      ask: 'The recipe uses 250 milliliters of milk, but you had only 175 milliliters of milk left. How much did you use?',
+      required: ['overrides'],
+      item: 'milk',
+      have: 175,
+      need: 250,
+    });
+    expect((await sessionRow()).state).toBe('cooking');
+
+    const p = await ok({ overrides: [{ item: 'milk', quantity: 175 }] });
+    expect(p.card.readback_text).toContain('175 milliliters of milk');
+
+    await adjustStock(servers, client, { item: 'milk', delta: -175, reason: 'discard' });
+    expect(parseErrorResult(await propose())?.ask).toBe('The recipe uses 250 milliliters of milk, but you had none left. How much did you use?');
   });
 
   it('starts a fresh card after a plan change superseded the old one', async () => {

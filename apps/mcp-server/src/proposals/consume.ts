@@ -116,18 +116,21 @@ async function planConsumption(
   const nameOf = (id: string) => items.get(id)?.name ?? id;
 
   const need = demandByItem(session.planned_usage);
+  const told = new Set<string>();
   if (overrides.length > 0) {
     const catalog = await loadCatalog(tx, householdId);
     for (const o of overrides) {
       const item = findItem(o.item, catalog);
       if (!item) throw new PantryError('unknown_item', `There is no ${o.item} in the catalog.`, { item: o.item });
       need.set(item.id, o.quantity);
+      told.add(item.id);
     }
   }
   for (const [itemId, quantity] of need) if (quantity <= 0) need.delete(itemId);
 
   const today = await householdToday(tx, householdId);
   const batches = await activeBatches(tx, householdId, today, { itemIds: [...need.keys()] });
+  askWhenShort(need, told, batches, items);
   const allocation = allocateFefo(need, batches, nameOf);
   const lines: ConsumeLine[] = [...need].map(([itemId, quantity]) => ({
     item_id: itemId,
@@ -137,6 +140,33 @@ async function planConsumption(
   }));
   const touched = batches.filter((b) => allocation.some((a) => a.batch_id === b.batch_id));
   return { payload: { lines, allocation, card: renderCard(lines, allocation, touched) }, batches: touched };
+}
+
+/**
+ * The plan uses more of an item than is left, as after a spill mid-cook: the user cooked with less,
+ * so ask what they used instead of refusing the card. An amount the user gave is not asked about;
+ * the allocation still refuses one larger than the stock.
+ */
+function askWhenShort(
+  need: ReadonlyMap<string, number>,
+  told: ReadonlySet<string>,
+  batches: readonly BatchView[],
+  items: ReadonlyMap<string, { name: string; base_unit: BaseUnit }>,
+): void {
+  for (const [itemId, planned] of need) {
+    if (told.has(itemId)) continue;
+    const have = roundQuantity(batches.filter((b) => b.item_id === itemId).reduce((sum, b) => sum + b.quantity, 0));
+    if (have >= planned) continue;
+    const { name: item, base_unit: unit } = items.get(itemId)!;
+    const left = have > 0 ? `you had only ${speakQuantity(item, have, unit, unit)} left` : `you had none left`;
+    throw new PantryError('needs_clarification', `The recipe uses more ${item} than is in stock.`, {
+      ask: `The recipe uses ${speakQuantity(item, planned, unit, unit)}, but ${left}. How much did you use?`,
+      required: ['overrides'],
+      item,
+      have,
+      need: planned,
+    });
+  }
 }
 
 function preconditionsFor(sessionId: string, stateVersion: number, batches: readonly BatchView[]): ConsumePreconditions {
