@@ -42,6 +42,9 @@ export async function buildAgentApp(config: AgentConfig, pool: Pool, options: Ag
     bodyLimit: config.bodyLimitBytes,
     logger: options.log === false ? false : { level: process.env.LOG_LEVEL ?? 'info' },
   });
+  // An idle connection the database closed (a restart, a failover) is replaced on next use;
+  // with no listener, its error would end the process.
+  pool.on('error', (err) => app.log.warn({ err }, 'idle database connection lost'));
   const internal = new InternalClient(config.internalUrl, config.serviceToken);
   const turn: TurnDeps = {
     pool,

@@ -1,7 +1,7 @@
 // Spike V3 (MCP half): agent ↔ MCP server ↔ internal API, with role-separated DB access.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '@pantrymos/mcp-server';
-import { createHousehold, mcpTestConfig } from '../../../../test/fixtures.ts';
+import { createHousehold, mcpTestConfig, withAdmin } from '../../../../test/fixtures.ts';
 import { TEST_AGENT_DB_URL } from '../../../../test/env.ts';
 import { startAgent, type TestAgent } from '../fixtures.ts';
 
@@ -28,6 +28,20 @@ describe('agent health', () => {
       mcp: { ok: true, tools: expect.arrayContaining(['list_inventory']) },
       internal: true,
     });
+  });
+
+  it('keeps running when the database closes its idle connections, as on a restart', async () => {
+    // Both services hold idle connections after the check above; an unhandled error on one would end the process.
+    const { rows } = await withAdmin((admin) =>
+      admin.query<{ ended: boolean }>(
+        `SELECT pg_terminate_backend(pid) AS ended FROM pg_stat_activity
+          WHERE datname = current_database() AND usename IN ('pantry_agent', 'pantry_mcp')`,
+      ),
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const res = await agent.app.inject({ method: 'GET', url: '/api/health' });
+    expect(res.json()).toMatchObject({ ok: true, db: true, internal: true });
   });
 });
 

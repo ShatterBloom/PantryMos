@@ -127,6 +127,9 @@ export async function startServers(config: Config, options: { log?: boolean } = 
   const log = options.log ?? true;
   const mcp = await buildMcpApp(config, pool, log);
   const internal = await buildInternalApp(config, pool, log);
+  // An idle connection the database closed (a restart, a failover) is replaced on next use;
+  // with no listener, its error would end the process.
+  pool.on('error', (err) => mcp.log.warn({ err }, 'idle database connection lost'));
   const close = async () => {
     await Promise.allSettled([mcp.close(), internal.close()]);
     await pool.end();
