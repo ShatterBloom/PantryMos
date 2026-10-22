@@ -89,6 +89,34 @@ export function withoutRecital(text: string, readback: string): string {
     .join(' ');
 }
 
+/** Words that say nothing about what a step is about. */
+const FILLER = new Set(['the', 'and', 'for', 'you', 'your', 'with', 'are', 'this', 'that', 'will', 'now', 'here', 'current', 'step', 'next', 'when', 'ready', 'say', 'then', 'into', 'until', 'about', 'again', 'there']);
+
+const words = (text: string) => (text.toLowerCase().match(/[a-z]+/g) ?? []).filter((w) => w.length >= 3 && !FILLER.has(w));
+
+/** "boiling" and "boil", "eggs" and "egg": the same word to within its ending. */
+function sameStem(a: string, b: string): boolean {
+  const n = Math.min(4, a.length, b.length);
+  return a.slice(0, n) === b.slice(0, n);
+}
+
+/**
+ * The model's speech less what the step the app reads after it says again, and any question, as the
+ * user's answer to a step is "next": "Here's your current step: pour in the milk…", "The pasta is
+ * boiling and will be done in about 8 minutes", "What's your next move?" (eval P9, G5). A sentence
+ * leaves when most of its words are the step's.
+ */
+export function withoutStepRecital(text: string, stepText: string): string {
+  const step = words(stepText);
+  return sentences(withoutQuestions(text))
+    .filter((s) => {
+      const own = words(s);
+      const shared = own.filter((w) => step.some((t) => sameStem(w, t))).length;
+      return own.length < 2 || shared / own.length < 0.6;
+    })
+    .join(' ');
+}
+
 /** The model's speech less its questions, when the app asks the one the user answers. */
 export function withoutQuestions(text: string): string {
   return sentences(text)

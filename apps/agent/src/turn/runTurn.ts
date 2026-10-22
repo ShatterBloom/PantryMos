@@ -13,7 +13,7 @@ import { closeOpenWindows } from '../store/windows.ts';
 import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
-import { ground, withoutQuestions, withoutRecital } from './grounding.ts';
+import { ground, withoutQuestions, withoutRecital, withoutStepRecital } from './grounding.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 import { eventBlock, fallbackSpeech, NOT_CHANGED, TURN_FAILED, timerOffer } from './speech.ts';
 
@@ -286,6 +286,7 @@ async function finishTurn(
   const cards: Card[] = [];
   let proposal: Record<string, unknown> | null = null;
   let step: { session_id: string; step_no: number } | null = null;
+  let stepText: string | null = null;
   let stepSpeech: string | null = null;
   let offer: VoicePrompt | null = null;
   for (const call of calls) {
@@ -302,7 +303,8 @@ async function finishTurn(
       if (call.name === 'get_session') continue;
       cards.push({ type: 'step', ...pick(data, ['session_id', 'step_no', 'total_steps', 'step_text', 'timer_seconds', 'timer_label', 'done']) });
       // The app reads the step from the recipe; the model may not (grounding.ts).
-      stepSpeech = data.done !== true && typeof data.step_text === 'string' ? `Step ${data.step_no}: ${data.step_text}` : null;
+      stepText = data.done !== true && typeof data.step_text === 'string' ? data.step_text : null;
+      stepSpeech = stepText === null ? null : `Step ${data.step_no}: ${stepText}`;
       offer =
         typeof data.timer_seconds === 'number' && data.done !== true
           ? {
@@ -317,6 +319,7 @@ async function finishTurn(
   }
 
   // What the app says follows the model's speech: the step, then the card's read-back or the timer offer.
+  if (stepText) speech = withoutStepRecital(speech, stepText);
   let voicePrompt: VoicePrompt | null = null;
   let question: string | null = null;
   if (proposal) {

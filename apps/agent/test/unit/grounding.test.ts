@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ground, withoutQuestions, withoutRecital } from '../../src/turn/grounding.ts';
+import { ground, withoutQuestions, withoutRecital, withoutStepRecital } from '../../src/turn/grounding.ts';
 
 describe('ground', () => {
   it('leaves out a claim that the stock changed when no commit backs it', () => {
@@ -133,5 +133,32 @@ describe('withoutQuestions', () => {
     expect(withoutQuestions('I started the stir-fry for 2 servings. What would you like to do next?')).toBe('I started the stir-fry for 2 servings.');
     expect(withoutQuestions('Ready? Go.')).toBe('Go.');
     expect(withoutQuestions('')).toBe('');
+  });
+});
+
+describe('withoutStepRecital', () => {
+  it("leaves out the model's retelling of the step the app reads, and its questions", () => {
+    // As Nova 2 Lite said before the app's "Step N: …" (eval P9, G5, P1).
+    for (const [said, step] of [
+      ["Here's your current step: Pour in the milk and simmer for 3 minutes.", 'Pour in the milk and simmer for 3 minutes.'],
+      ['The pasta is boiling and will be done in about 8 minutes.', 'Add the pasta and boil it until al dente, about 8 minutes.'],
+      ['The spinach is wilting.', 'Add the spinach and stir until it wilts.'],
+      ['The butter is melting and the garlic and scallions are softening.', 'Meanwhile, melt the butter in a pan and soften the garlic and scallions.'],
+      ["What's your next move?", 'Return the eggs, add the scallions and soy sauce, and toss.'],
+    ]) {
+      expect(withoutStepRecital(said!, step!)).toBe('');
+    }
+  });
+
+  it('keeps what the step does not say', () => {
+    const step = 'Beat the eggs with a pinch of salt and cut the tomatoes into wedges.';
+    for (const s of [
+      'I started the tomato egg stir-fry for 2 servings.',
+      'The tomato egg stir-fry is cooking!',
+      "I'm making it with the tomatoes that expire on Oct 22.",
+      'Sorry, I can only move one step at a time.',
+    ]) {
+      expect(withoutStepRecital(s, step)).toBe(s);
+    }
   });
 });
