@@ -15,8 +15,11 @@ const UnitInput = NameInput.max(20);
 /** One purchase line, as the model sends it to propose_intake and the app sends it in a card edit. */
 export const IntakeItem = z.object({
   name: NameInput.describe('What was bought, e.g. "eggs", "oat milk".'),
-  quantity: Quantity.optional().describe('How many / how much, in `unit`. Omit if the user did not say; never guess.'),
-  unit: UnitInput.optional().describe('"count", "g", "kg", "ml", "l", "dozen", or a package unit like "carton". Omit for counted items.'),
+  quantity: Quantity.optional().describe(
+    'How many / how much, in `unit`. Dozens are counted items: "a dozen eggs" is 12, "two dozen" is 24, with no unit. ' +
+      'Omit if the user did not say; never guess.',
+  ),
+  unit: UnitInput.optional().describe('"g", "kg", "ml", "l", or a package unit like "carton". Omit for counted items.'),
   purchased_at: IsoDate.optional().describe('YYYY-MM-DD; defaults to today. Resolve "yesterday" using `today` from a read tool.'),
   opened_at: IsoDate.optional(),
   package_date: IsoDate.optional().describe('Only a date the user read off the package. Never estimate one.'),

@@ -82,7 +82,7 @@ describe('propose_intake', () => {
     const p = out(res);
     expect(p).toMatchObject({ version: 1, kind: 'intake' });
     expect(p.card.lines).toEqual(['2 tomatoes · bought today, no package date', '1 dozen eggs (12 count) · bought today, no package date']);
-    expect(p.card.readback_text).toBe("I'll add 2 tomatoes and 1 dozen eggs. Say confirm, or tell me what to change.");
+    expect(p.card.readback_text).toBe("I'll add 2 tomatoes and 1 dozen eggs, which is 12 eggs. Say confirm, or tell me what to change.");
     expect(await proposalRow(p.proposal_id)).toEqual({
       household_id: hh.householdId,
       conversation_id: conversationId,

@@ -281,6 +281,12 @@ function resolveTarget(
 function renderCard(lines: IntakeLine[], newItems: NewItem[], conversions: NewConversion[], today: string): Card {
   const spoken = lines.map((l) => {
     let phrase = speakQuantity(l.item, l.quantity_shown, l.unit_shown, l.base_unit);
+    // A pack unit is said with the count it stands for, so a misheard amount is caught by ear
+    // (unless the card is saving that pack size, which it says next).
+    const learnt = conversions.some((c) => c.item === l.item && c.unit === l.unit_shown);
+    if (l.base_unit === 'count' && l.unit_shown !== 'count' && !learnt) {
+      phrase += `, which is ${speakQuantity(l.item, l.quantity_base, 'count', 'count')}`;
+    }
     if (l.package_date !== null) phrase += `, ${packagePhrase(l.package_date, l.package_date_type)}`;
     if (l.purchased_at !== today) phrase += `, bought ${formatShort(l.purchased_at)}`;
     return phrase;

@@ -206,6 +206,23 @@ export const CASES: readonly EvalCase[] = [
     },
   },
   {
+    id: 'P11',
+    title: '"A dozen" as an answer, then "two dozen"',
+    async run(ctx) {
+      // The demo walkthrough: Nova sent 12 dozen for "a dozen", and the card added 144 eggs.
+      await ctx.say('I bought some eggs', 'voice');
+      await untilCard(ctx, [() => ctx.say('a dozen', 'voice')]);
+      await ctx.answer('yes');
+      await ctx.say('I also bought two dozen eggs', 'voice');
+      await ctx.card();
+      await ctx.answer('yes');
+    },
+    expect: {
+      tools: ['propose_intake'],
+      db: { stock: { egg: 36 }, operations: ['intake', 'intake'] },
+    },
+  },
+  {
     id: 'P7',
     title: 'A substitute mid-cook',
     stock: { ...PASTA_STOCK, onion: 2 },
