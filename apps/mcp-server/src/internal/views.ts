@@ -3,6 +3,7 @@ import { householdToday, type Queryable } from '../db/catalog.ts';
 import { activeBatches } from '../db/inventory.ts';
 import type { ProposalKind } from '../db/proposals.ts';
 import { itemInfo } from '../db/sessions.ts';
+import { dateLabel, type PackageDateType } from '../domain/dates.ts';
 import { describeOperation } from '../domain/operations.ts';
 import { groupByItem } from '../mcp/tools/listInventory.ts';
 
@@ -72,6 +73,7 @@ export async function ledgerView(q: Queryable, householdId: string, limit: numbe
     [householdId, limit],
   );
   return {
+    used_first: await usedFirst(q, householdId, items),
     operations: rows.map((r) => {
       const changes = r.changes.map((c) => {
         const item = items.get(c.item_id)!;
@@ -88,6 +90,63 @@ export async function ledgerView(q: Queryable, householdId: string, limit: numbe
         reverted_by: r.reverted_by,
         reverts_operation_ids: r.reverts_operation_ids,
         created_at: r.created_at.toISOString(),
+      };
+    }),
+  };
+}
+
+/** The "used first" summary (FR-24): meals of the last week, and the window expiring_soon uses. */
+export const USED_FIRST_DAYS = 7;
+export const DUE_SOON_DAYS = 3;
+
+interface UsedRow {
+  batch_id: string;
+  item_id: string;
+  purchased_at: string;
+  opened_at: string | null;
+  package_date: string | null;
+  package_date_type: PackageDateType | null;
+  used: string;
+  used_on: string;
+  operation_ids: string[];
+}
+
+/**
+ * Batches meals used while they were due soon, over the last week: what was saved from going bad.
+ * Undone meals and corrections don't count, and a correction that gave stock back counts net.
+ * Each batch's date label is as of the day it was last used, and names the operations behind it.
+ */
+async function usedFirst(q: Queryable, householdId: string, items: Awaited<ReturnType<typeof itemInfo>>) {
+  const { rows } = await q.query<UsedRow>(
+    `SELECT b.id AS batch_id, b.item_id, b.purchased_at::text, b.opened_at::text, b.package_date::text, b.package_date_type,
+            (-sum(e.delta))::text AS used,
+            max((o.created_at AT TIME ZONE h.timezone)::date)::text AS used_on,
+            array_agg(DISTINCT o.id) AS operation_ids
+       FROM pantry.inventory_events e
+       JOIN pantry.operations o ON o.id = e.operation_id
+       JOIN pantry.batches b ON b.id = e.batch_id
+       JOIN pantry.households h ON h.id = o.household_id
+      WHERE o.household_id = $1
+        AND e.reason IN ('consume', 'consume_revision')
+        AND o.reverted_by_op IS NULL
+        AND o.created_at >= now() - make_interval(days => $2)
+        AND b.priority_date <= (o.created_at AT TIME ZONE h.timezone)::date + $3::int
+      GROUP BY b.id
+     HAVING sum(e.delta) < 0
+      ORDER BY min(b.priority_date), b.id`,
+    [householdId, USED_FIRST_DAYS, DUE_SOON_DAYS],
+  );
+  return {
+    days: USED_FIRST_DAYS,
+    batches: rows.map((r) => {
+      const item = items.get(r.item_id)!;
+      return {
+        batch_id: r.batch_id,
+        item: item.name,
+        quantity: Number(r.used),
+        unit: item.base_unit,
+        date_label: dateLabel(r, r.used_on),
+        operation_ids: r.operation_ids,
       };
     }),
   };

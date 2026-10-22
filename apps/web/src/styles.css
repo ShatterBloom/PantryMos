@@ -690,6 +690,28 @@ h3 {
   margin-left: 0;
 }
 
+.used-first .panel-sub {
+  margin-top: 0;
+}
+
+.used-first-count {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.used-first a.tag {
+  text-decoration: none;
+}
+
+.used-first a.tag:hover {
+  color: var(--accent);
+}
+
+/* A ledger entry opened from the summary. */
+.ledger-op:target {
+  background: var(--accent-soft);
+}
+
 /* Dialog */
 .dialog-backdrop {
   position: fixed;

@@ -13,6 +13,7 @@ import {
   internalCall,
   mcpTestConfig,
   stockKitchen,
+  withAdmin,
 } from '../../../../test/fixtures.ts';
 
 describe('internal views', () => {
@@ -99,6 +100,50 @@ describe('internal views', () => {
 
     const limited = await view('/internal/views/ledger?limit=1');
     expect((limited.body.operations as unknown[]).map((o) => (o as { kind: string }).kind)).toEqual(['undo']);
+  });
+
+  it('sums up the batches meals used while they were due soon, over the last week (FR-24, story G2)', async () => {
+    // Tomatoes bought 5 days ago are due in 2; the eggs, oil and scallions are not due soon.
+    await stockKitchen(kitchen, { tomato: 4 }, 5);
+    await stockKitchen(kitchen, { egg: 12, 'olive oil': 100, scallion: 2 });
+    const meal = await eatMeal(servers, client, 'tomato egg stir-fry');
+    const usedFirst = async () => (await view('/internal/views/ledger')).body.used_first as { days: number; batches: unknown[] };
+    expect(await usedFirst()).toEqual({
+      days: 7,
+      batches: [
+        {
+          batch_id: expect.any(String),
+          item: 'tomato',
+          quantity: 2,
+          unit: 'count',
+          date_label: 'stored for 5 days, no package date',
+          operation_ids: [meal.operationId],
+        },
+      ],
+    });
+
+    // A correction counts with its meal.
+    const revision = (await callWrite(client, 'propose_consumption_revision', { usage: [{ item: 'tomato', quantity: 3 }] }))
+      .structuredContent as { proposal_id: string; version: number };
+    const revised = await confirmCard(servers, revision, revision.version);
+    expect((await usedFirst()).batches).toEqual([
+      expect.objectContaining({ item: 'tomato', quantity: 3, operation_ids: expect.arrayContaining([meal.operationId, revised.body.operation_id]) }),
+    ]);
+
+    // A meal more than a week ago, or one undone, doesn't.
+    await withAdmin((admin) =>
+      admin.query(`UPDATE pantry.operations SET created_at = created_at - interval '8 days' WHERE household_id = $1`, [kitchen.householdId]),
+    );
+    expect((await usedFirst()).batches).toEqual([]);
+  });
+
+  it('leaves an undone meal out of the used-first summary', async () => {
+    await stockKitchen(kitchen, { tomato: 4 }, 5);
+    await stockKitchen(kitchen, { egg: 12, 'olive oil': 100, scallion: 2 });
+    await eatMeal(servers, client, 'tomato egg stir-fry');
+    const undo = (await callWrite(client, 'propose_undo', { target: 'last' })).structuredContent as { proposal_id: string; version: number };
+    expect((await confirmCard(servers, undo, undo.version)).status).toBe(200);
+    expect((await view('/internal/views/ledger')).body.used_first).toEqual({ days: 7, batches: [] });
   });
 
   it('shows a confirmed re-proposal as its later version', async () => {

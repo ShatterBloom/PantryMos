@@ -1,5 +1,5 @@
 // The kitchen as recorded (§8.8): stock and the shopping list, the ledger, and running timers.
-import type { Api, Inventory, LedgerOperation, Timer } from '../lib/api.ts';
+import type { Api, Inventory, Ledger, LedgerOperation, Timer, UsedFirst } from '../lib/api.ts';
 import { formatDuration } from './Cards.tsx';
 import { useNow, usePolling } from './hooks.ts';
 
@@ -62,13 +62,60 @@ export function KitchenPanel({ api }: { api: Api }) {
 }
 
 export function LedgerPanel({ api }: { api: Api }) {
-  const { data, error } = usePolling<{ operations: LedgerOperation[] }>(() => api.ledger(50), POLL_MS);
+  const { data, error } = usePolling<Ledger>(() => api.ledger(50), POLL_MS);
   if (!data) return <PanelStatus error={error} />;
   if (data.operations.length === 0) return <p className="muted panel-body">No changes recorded yet.</p>;
   return (
-    <ol className="ledger panel-body">
-      {data.operations.map((op) => (
-        <li key={op.operation_id} className={`ledger-op${op.reverted_by ? ' is-reverted' : ''}`}>
+    <div className="panel-body">
+      <UsedFirstSummary usedFirst={data.used_first} operations={data.operations} />
+      <h3 className="panel-sub">Changes</h3>
+      <LedgerList operations={data.operations} />
+    </div>
+  );
+}
+
+/** What meals used before it went bad this week; each batch links to the ledger entries behind it. */
+function UsedFirstSummary({ usedFirst, operations }: { usedFirst: UsedFirst; operations: LedgerOperation[] }) {
+  const when = (id: string) => operations.find((op) => op.operation_id === id)?.created_at;
+  return (
+    <section className="used-first" aria-label="Used first this week">
+      <h3 className="panel-sub">Used first this week</h3>
+      {usedFirst.batches.length === 0 ? (
+        <p className="muted">Nothing that was due soon was used in the last {usedFirst.days} days.</p>
+      ) : (
+        <>
+          <p className="used-first-count">
+            {usedFirst.batches.length} {usedFirst.batches.length === 1 ? 'batch' : 'batches'} used before {usedFirst.batches.length === 1 ? 'it' : 'they'} went bad
+          </p>
+          <ul className="batches">
+            {usedFirst.batches.map((b) => (
+              <li key={b.batch_id} className="batch">
+                <span>
+                  <span className="stock-name">{b.item}</span> {formatAmount(b.quantity)} {unitLabel(b.unit)}
+                  {b.operation_ids.map((id) => {
+                    const at = when(id);
+                    return at ? (
+                      <a key={id} className="tag" href={`#op-${id}`}>
+                        {formatTime(at)}
+                      </a>
+                    ) : null;
+                  })}
+                </span>
+                <span className="batch-date">{b.date_label}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function LedgerList({ operations }: { operations: LedgerOperation[] }) {
+  return (
+    <ol className="ledger">
+      {operations.map((op) => (
+        <li key={op.operation_id} id={`op-${op.operation_id}`} className={`ledger-op${op.reverted_by ? ' is-reverted' : ''}`}>
           <div className="ledger-head">
             <span className="ledger-summary">{op.summary}</span>
             <time dateTime={op.created_at}>{formatTime(op.created_at)}</time>

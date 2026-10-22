@@ -96,6 +96,17 @@ export interface LedgerOperation {
   created_at: string;
 }
 
+/** Batches meals used while they were due soon, over the last `days` days (FR-24). */
+export interface UsedFirst {
+  days: number;
+  batches: Array<{ batch_id: string; item: string; quantity: number; unit: string; date_label: string; operation_ids: string[] }>;
+}
+
+export interface Ledger {
+  used_first: UsedFirst;
+  operations: LedgerOperation[];
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: Record<string, unknown>;
@@ -184,7 +195,7 @@ export class Api {
   }
 
   ledger(limit = 50) {
-    return this.request<{ operations: LedgerOperation[] }>('GET', `/api/ledger?limit=${limit}`);
+    return this.request<Ledger>('GET', `/api/ledger?limit=${limit}`);
   }
 
   /** One request; a lost session (401) signs in again and retries once. */

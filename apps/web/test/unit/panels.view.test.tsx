@@ -79,8 +79,9 @@ describe('LedgerPanel', () => {
       op({ operation_id: 'o2', summary: 'Added 12 eggs', confirmed: { channel: 'voice_rule', utterance: 'yes', user_id: 'u' }, proposal_version: 2 }),
       op({ reverted_by: 'o3' }),
     ];
-    render(<LedgerPanel api={asApi({ ledger: async () => ({ operations }) })} />);
+    render(<LedgerPanel api={asApi({ ledger: async () => ({ used_first: { days: 7, batches: [] }, operations }) })} />);
     await settle();
+    expect(screen.getByText('Nothing that was due soon was used in the last 7 days.')).toBeTruthy();
     const [voice, undone] = screen.getAllByRole('listitem');
     expect(voice!.textContent).toContain('said "yes"');
     expect(voice!.textContent).toContain('card v2');
@@ -90,8 +91,31 @@ describe('LedgerPanel', () => {
     expect(undone!.classList.contains('is-reverted')).toBe(true);
   });
 
+  it('sums up what was used first this week, each batch linking to its ledger entries (story G2)', async () => {
+    const operations = [op({ operation_id: 'o2', kind: 'revise_consumption' }), op({ operation_id: 'o1' })];
+    const used_first = {
+      days: 7,
+      batches: [
+        { batch_id: 'b1', item: 'tomato', quantity: 3, unit: 'count', date_label: 'stored for 5 days, no package date', operation_ids: ['o1', 'o2'] },
+        { batch_id: 'b2', item: 'milk', quantity: 250, unit: 'ml', date_label: 'best by Oct 24 (from package)', operation_ids: ['gone'] },
+      ],
+    };
+    render(<LedgerPanel api={asApi({ ledger: async () => ({ used_first, operations }) })} />);
+    await settle();
+    const summary = screen.getByRole('region', { name: 'Used first this week' });
+    expect(summary.textContent).toContain('2 batches used before they went bad');
+    const [tomato, milk] = Array.from(summary.querySelectorAll('li'));
+    expect(tomato!.textContent).toContain('tomato 3');
+    expect(tomato!.textContent).toContain('stored for 5 days, no package date');
+    expect(Array.from(tomato!.querySelectorAll('a')).map((a) => a.getAttribute('href'))).toEqual(['#op-o1', '#op-o2']);
+    // An entry older than the ledger shows has no link.
+    expect(milk!.textContent).toContain('milk 250 ml');
+    expect(milk!.querySelectorAll('a')).toHaveLength(0);
+    expect(document.getElementById('op-o2')).toBeTruthy();
+  });
+
   it('says when nothing has changed yet', async () => {
-    render(<LedgerPanel api={asApi({ ledger: async () => ({ operations: [] }) })} />);
+    render(<LedgerPanel api={asApi({ ledger: async () => ({ used_first: { days: 7, batches: [] }, operations: [] }) })} />);
     await settle();
     expect(screen.getByText('No changes recorded yet.')).toBeTruthy();
   });
