@@ -146,7 +146,7 @@ describe('withoutStepRecital', () => {
       ['The butter is melting and the garlic and scallions are softening.', 'Meanwhile, melt the butter in a pan and soften the garlic and scallions.'],
       ["What's your next move?", 'Return the eggs, add the scallions and soy sauce, and toss.'],
     ]) {
-      expect(withoutStepRecital(said!, step!)).toBe('');
+      expect(withoutStepRecital(said!, step!)).toEqual({ text: '', cue: null });
     }
   });
 
@@ -158,7 +158,23 @@ describe('withoutStepRecital', () => {
       "I'm making it with the tomatoes that expire on Oct 22.",
       'Sorry, I can only move one step at a time.',
     ]) {
-      expect(withoutStepRecital(s, step)).toBe(s);
+      expect(withoutStepRecital(s, step)).toEqual({ text: s, cue: null });
     }
+  });
+
+  it('keeps one cue to say "next" for after the step, and drops other talk of the next step', () => {
+    const step = 'Beat the eggs with a pinch of salt and cut the tomatoes into wedges.';
+    // As Nova 2 Lite said before the app's "Step 1: …" (eval P1, P9).
+    expect(withoutStepRecital('I started the stir-fry for 2 servings. Say "next" when ready.', step)).toEqual({
+      text: 'I started the stir-fry for 2 servings.',
+      cue: 'Say "next" when ready.',
+    });
+    expect(
+      withoutStepRecital(
+        `Let me know when you're ready for the next step by saying "next". Just say "next" once more and I'll confirm when the meal is finished.`,
+        step,
+      ),
+    ).toEqual({ text: '', cue: `Let me know when you're ready for the next step by saying "next".` });
+    expect(withoutStepRecital("Let's make it. I'll let you know when it's time for the next step.", step)).toEqual({ text: "Let's make it.", cue: null });
   });
 });

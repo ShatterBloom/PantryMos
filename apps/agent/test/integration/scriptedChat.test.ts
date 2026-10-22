@@ -107,12 +107,12 @@ describe('a scripted chat: intake → cook → consume', () => {
     expect(await eggs()).toBe(12);
 
     // Cooking: step 1 has no timer; "next" reaches step 2, whose timer the app offers.
-    agent.model.push(callTools(['start_cooking', { recipe_name: 'tomato egg stir-fry' }]), say('Step 1: beat the eggs.'));
+    agent.model.push(callTools(['start_cooking', { recipe_name: 'tomato egg stir-fry' }]), say('Say "next" when ready. Step 1: beat the eggs.'));
     await chat(agent, "Let's make tomato egg stir-fry");
     const step1 = await lastMessage(agent);
     expect(step1).toMatchObject({
-      // The model's step recital is left out; the app reads the step from the recipe.
-      speech: 'Step 1: Beat the eggs with a pinch of salt and cut the tomatoes into wedges.',
+      // The model's step recital is left out; the app reads the step from the recipe, then the model's cue.
+      speech: 'Step 1: Beat the eggs with a pinch of salt and cut the tomatoes into wedges. Say "next" when ready.',
       step_no: 1,
       voice_prompt: null,
       cards: [expect.objectContaining({ type: 'step', step_no: 1 })],

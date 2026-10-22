@@ -318,8 +318,10 @@ async function finishTurn(
     }
   }
 
-  // What the app says follows the model's speech: the step, then the card's read-back or the timer offer.
-  if (stepText) speech = withoutStepRecital(speech, stepText);
+  // What the app says follows the model's speech: the step, then the card's read-back, the timer
+  // offer or the model's cue to say "next".
+  let cue: string | null = null;
+  if (stepText) ({ text: speech, cue } = withoutStepRecital(speech, stepText));
   let voicePrompt: VoicePrompt | null = null;
   let question: string | null = null;
   if (proposal) {
@@ -336,7 +338,7 @@ async function finishTurn(
     question = timerOffer(offer.seconds);
     voicePrompt = offer;
   }
-  speech = [speech, stepSpeech, question].filter(Boolean).join(' ');
+  speech = [speech, stepSpeech, question ?? cue].filter(Boolean).join(' ');
   // The model said nothing and the app had nothing to add: never deliver a silent message.
   if (speech === '') speech = trigger.type === 'user' ? TURN_FAILED : trigger.events.map(fallbackSpeech).join(' ');
 

@@ -100,21 +100,31 @@ function sameStem(a: string, b: string): boolean {
   return a.slice(0, n) === b.slice(0, n);
 }
 
+/** "Say "next" when you're ready", "Let me know by saying next": the user's cue, which follows the step. */
+const NEXT = /\bnext\b/i;
+const SAY = /\bsay(?:ing)?\b/i;
+
 /**
  * The model's speech less what the step the app reads after it says again, and any question, as the
  * user's answer to a step is "next": "Here's your current step: pour in the milk…", "The pasta is
  * boiling and will be done in about 8 minutes", "What's your next move?" (eval P9, G5). A sentence
- * leaves when most of its words are the step's.
+ * leaves when most of its words are the step's. Talk of the next step leaves too: a cue to say
+ * "next" is `cue`, said after the step, and a promise such as "I'll let you know when it's time for
+ * the next step" is one nobody keeps.
  */
-export function withoutStepRecital(text: string, stepText: string): string {
+export function withoutStepRecital(text: string, stepText: string): { text: string; cue: string | null } {
   const step = words(stepText);
-  return sentences(withoutQuestions(text))
-    .filter((s) => {
-      const own = words(s);
-      const shared = own.filter((w) => step.some((t) => sameStem(w, t))).length;
-      return own.length < 2 || shared / own.length < 0.6;
-    })
-    .join(' ');
+  let cue: string | null = null;
+  const kept = sentences(withoutQuestions(text)).filter((s) => {
+    if (NEXT.test(s)) {
+      if (cue === null && SAY.test(s)) cue = s;
+      return false;
+    }
+    const own = words(s);
+    const shared = own.filter((w) => step.some((t) => sameStem(w, t))).length;
+    return own.length < 2 || shared / own.length < 0.6;
+  });
+  return { text: kept.join(' '), cue };
 }
 
 /** The model's speech less its questions, when the app asks the one the user answers. */
