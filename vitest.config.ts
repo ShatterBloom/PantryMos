@@ -9,7 +9,7 @@ export default defineConfig({
       {
         test: {
           name: 'unit',
-          include: ['apps/*/test/unit/**/*.test.ts', 'packages/*/test/unit/**/*.test.ts'],
+          include: ['apps/*/test/unit/**/*.test.{ts,tsx}', 'packages/*/test/unit/**/*.test.ts'],
         },
       },
       {
@@ -25,8 +25,9 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      // The web app's logic is covered; its React views and browser adapters are checked by hand (§9.7).
-      include: ['apps/mcp-server/src/**', 'apps/agent/src/**', 'apps/web/src/lib/**', 'packages/*/src/**'],
+      // The web app's logic and views are covered (views in jsdom); its browser adapters and the page
+      // that wires them are checked by hand (§9.7).
+      include: ['apps/mcp-server/src/**', 'apps/agent/src/**', 'apps/web/src/lib/**', 'apps/web/src/ui/**', 'packages/*/src/**'],
       // Process entry points only wire config to startServers; covered by the compose smoke run.
       exclude: ['apps/*/src/index.ts'],
       reporter: ['text-summary', 'html', 'lcov'],
