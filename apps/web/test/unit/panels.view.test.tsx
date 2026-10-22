@@ -85,6 +85,8 @@ describe('LedgerPanel', () => {
     const [voice, undone] = screen.getAllByRole('listitem');
     expect(voice!.textContent).toContain('said "yes"');
     expect(voice!.textContent).toContain('card v2');
+    // In English whatever the browser's language, like the rest of the app.
+    expect(voice!.querySelector('time')!.textContent).toMatch(/^Oct \d{1,2}, \d{1,2}:\d{2}\s[AP]M$/);
     expect(voice!.classList.contains('is-reverted')).toBe(false);
     expect(undone!.textContent).toContain('tapped Confirm');
     expect(undone!.textContent).toContain('undone');

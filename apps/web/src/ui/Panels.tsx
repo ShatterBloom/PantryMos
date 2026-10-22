@@ -175,4 +175,5 @@ function PanelStatus({ error }: { error: boolean }) {
 const UNIT_LABEL: Record<string, string> = { count: '', g: 'g', ml: 'ml' };
 const unitLabel = (unit: string) => UNIT_LABEL[unit] ?? unit;
 const formatAmount = (n: number) => String(Math.round(n * 100) / 100);
-const formatTime = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+// English like the rest of the app (en-US speech and labels), whatever the browser's language.
+const formatTime = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
