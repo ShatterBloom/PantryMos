@@ -1,8 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { loadSteps } from '../../db/recipes.ts';
-import { lockActiveSession } from '../../db/sessions.ts';
+import { itemInfo, lockActiveSession } from '../../db/sessions.ts';
+import { stepWithSubstitutes } from '../../domain/cooking.ts';
 import { PantryError } from '../../domain/errors.ts';
+import type { Step } from '../../domain/recipes.ts';
 import type { ToolContext } from '../context.ts';
 import { StepOut, stepOut } from '../schemas.ts';
 import { runWriteTool } from '../toolkit.ts';
@@ -28,6 +30,8 @@ export function registerNextStep(server: McpServer, ctx: ToolContext): void {
         // The row lock serializes concurrent "next" requests (R32): only one sees its expected step.
         const session = await lockActiveSession(tx, ctx.auth.householdId, args.session_id);
         const steps = await loadSteps(tx, session.recipe_id);
+        const items = await itemInfo(tx, ctx.auth.householdId);
+        const said = (step: Step) => stepWithSubstitutes(step.text, session.planned_usage, items);
         const current = steps[session.current_step - 1]!;
 
         if (session.state !== 'cooking') {
@@ -38,19 +42,19 @@ export function registerNextStep(server: McpServer, ctx: ToolContext): void {
         if (session.current_step !== args.expected_step) {
           throw new PantryError('step_conflict', `The recipe is on step ${session.current_step}, not ${args.expected_step}.`, {
             current_step: session.current_step,
-            step_text: current.text,
+            step_text: said(current),
           });
         }
         if (session.current_step === session.total_steps) {
           const ask = "That was the last step. Tell me when you're done.";
-          return { data: { session_id: session.id, ...stepOut(current, session.total_steps), done: true, ask }, text: ask };
+          return { data: { session_id: session.id, ...stepOut(current, session.total_steps, said(current)), done: true, ask }, text: ask };
         }
 
         const next = steps[session.current_step]!;
         await tx.query(`UPDATE pantry.cooking_sessions SET current_step = $2 WHERE id = $1`, [session.id, next.step_no]);
         return {
-          data: { session_id: session.id, ...stepOut(next, session.total_steps), done: false, ask: null },
-          text: `Step ${next.step_no} of ${session.total_steps}: ${next.text}`,
+          data: { session_id: session.id, ...stepOut(next, session.total_steps, said(next)), done: false, ask: null },
+          text: `Step ${next.step_no} of ${session.total_steps}: ${said(next)}`,
         };
       }),
   );

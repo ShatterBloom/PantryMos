@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { loadSteps } from '../../db/recipes.ts';
 import { availableByItem, effectiveUsage, findSession, itemInfo } from '../../db/sessions.ts';
-import { demandByItem } from '../../domain/cooking.ts';
+import { demandByItem, stepWithSubstitutes } from '../../domain/cooking.ts';
 import { PantryError } from '../../domain/errors.ts';
 import type { ToolContext } from '../context.ts';
 import { StepOut, stepOut } from '../schemas.ts';
@@ -42,6 +42,7 @@ export function registerGetSession(server: McpServer, ctx: ToolContext): void {
         const unit = (id: string) => items.get(id)?.base_unit ?? '';
         const steps = await loadSteps(ctx.pool, session.recipe_id);
         const step = steps[session.current_step - 1]!;
+        const stepText = stepWithSubstitutes(step.text, session.planned_usage, items);
         const available = await availableByItem(ctx.pool, householdId);
 
         const coverage = [...demandByItem(session.planned_usage)].map(([itemId, planned]) => {
@@ -64,12 +65,12 @@ export function registerGetSession(server: McpServer, ctx: ToolContext): void {
             servings: session.servings,
             state: session.state,
             current_step: session.current_step,
-            ...stepOut(step, session.total_steps),
+            ...stepOut(step, session.total_steps, stepText),
             planned_usage: usageLines(session.planned_usage, items),
             plan_coverage: coverage,
             effective_usage: effective,
           },
-          text: `${session.recipe} (${session.state}), step ${session.current_step} of ${session.total_steps}: ${step.text}`,
+          text: `${session.recipe} (${session.state}), step ${session.current_step} of ${session.total_steps}: ${stepText}`,
         };
       }),
   );

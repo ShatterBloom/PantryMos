@@ -12,6 +12,7 @@ import {
   type DemoKitchen,
   mcpTestConfig,
   startPasta,
+  stockKitchen,
   withAdmin,
 } from '../../../../test/fixtures.ts';
 
@@ -65,6 +66,17 @@ describe('next_step', () => {
       ask: null,
     });
     expect(await currentStep()).toBe(2);
+  });
+
+  it('reads a step with the substitute in place of the ingredient it stands in for', async () => {
+    await stockKitchen(kitchen, { onion: 2 });
+    const swapped = await callWrite(client, 'substitute', { from_item: 'scallion', to_item: 'onion', chosen_by_user: true });
+    expect(swapped.isError).toBeFalsy();
+    await next(1);
+    const third = step(await next(2));
+    expect(third.step_text).toBe('Meanwhile, melt the butter in a pan and soften the garlic and onion.');
+    const session = (await callWrite(client, 'get_session', {})).structuredContent as { step_text: string };
+    expect(session.step_text).toBe(third.step_text);
   });
 
   it('advances only once when the same request is retried (R10)', async () => {

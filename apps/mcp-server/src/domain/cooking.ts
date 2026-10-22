@@ -4,6 +4,7 @@ import { PantryError } from './errors.ts';
 import type { BaseUnit } from './items.ts';
 import { type Ingredient, scaleQuantity } from './recipes.ts';
 import { formatNumber, listOr } from './speech.ts';
+import { plural } from './text.ts';
 
 /** One line of `cooking_sessions.planned_usage`. */
 export interface PlannedLine {
@@ -239,3 +240,24 @@ export function skipIngredient(plan: readonly PlannedLine[], ingredientId: strin
     .filter((l) => l.replaces_item_id !== ingredientId)
     .map((l) => (l.origin === 'recipe' && l.item_id === ingredientId && l.status === 'planned' ? { ...l, status: 'skipped' } : l));
 }
+
+/**
+ * A step as cooked with this plan: each ingredient a substitute stands in for is named as the
+ * substitute ("soften the garlic and scallions" → "soften the garlic and onion"). A counted
+ * substitute is plural unless the plan uses one.
+ */
+export function stepWithSubstitutes(text: string, plan: readonly PlannedLine[], items: ReadonlyMap<string, ItemInfo>): string {
+  let out = text;
+  for (const line of plan) {
+    if (line.origin !== 'substitute' || line.status !== 'planned' || !line.replaces_item_id) continue;
+    const from = items.get(line.replaces_item_id)?.name;
+    const to = items.get(line.item_id);
+    if (!from || !to) continue;
+    const word = to.base_unit === 'count' && line.quantity !== 1 ? plural(to.name) : to.name;
+    const named = new RegExp(`\\b(?:${escapeRegExp(plural(from))}|${escapeRegExp(from)})\\b`, 'gi');
+    out = out.replace(named, (match) => (/^[A-Z]/.test(match) ? word[0]!.toUpperCase() + word.slice(1) : word));
+  }
+  return out;
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

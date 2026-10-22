@@ -29,11 +29,12 @@ export const StepOut = {
   timer_label: z.string().nullable(),
 };
 
-export function stepOut(step: Step, totalSteps: number) {
+/** `text` is the step as cooked: the recipe's, with substitutes named (stepWithSubstitutes). */
+export function stepOut(step: Step, totalSteps: number, text = step.text) {
   return {
     step_no: step.step_no,
     total_steps: totalSteps,
-    step_text: step.text,
+    step_text: text,
     timer_seconds: step.timer_seconds,
     timer_label: step.timer_label,
   };

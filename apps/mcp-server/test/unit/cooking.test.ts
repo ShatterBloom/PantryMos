@@ -10,6 +10,7 @@ import {
   type PlannedLine,
   requireMakeable,
   skipIngredient,
+  stepWithSubstitutes,
   substituteOptions,
 } from '../../src/domain/cooking.ts';
 import type { PantryError } from '../../src/domain/errors.ts';
@@ -248,5 +249,30 @@ describe('plan edits during cooking', () => {
     expect(skipped).toContainEqual({ item_id: 'onion', quantity: 1, status: 'planned', origin: 'recipe' });
     expect(ingredientCovered(skipped, 'scallion')).toBe(false);
     expect(demandByItem(skipped).get('onion')).toBe(1);
+  });
+});
+
+describe('stepWithSubstitutes', () => {
+  const sub = (item_id: string, replaces_item_id: string, quantity: number, status: PlannedLine['status'] = 'planned'): PlannedLine => ({
+    item_id,
+    quantity,
+    status,
+    origin: 'substitute',
+    replaces_item_id,
+  });
+
+  it('names the substitute where the step names the ingredient it stands in for', () => {
+    const text = 'Soften the garlic and scallions.';
+    expect(stepWithSubstitutes(text, [sub('onion', 'scallion', 1)], items)).toBe('Soften the garlic and onion.');
+    expect(stepWithSubstitutes(text, [sub('onion', 'scallion', 2)], items)).toBe('Soften the garlic and onions.');
+    expect(stepWithSubstitutes('Scallions last.', [sub('onion', 'scallion', 1)], items)).toBe('Onion last.');
+    expect(stepWithSubstitutes('Top with the parmesan.', [sub('cheddar', 'parmesan', 40)], items)).toBe('Top with the cheddar.');
+  });
+
+  it('leaves the step as written without a planned substitute, and leaves other words alone', () => {
+    const text = 'Add the scallions to the scallionless pan.';
+    expect(stepWithSubstitutes(text, [], items)).toBe(text);
+    expect(stepWithSubstitutes(text, [sub('onion', 'scallion', 1, 'skipped')], items)).toBe(text);
+    expect(stepWithSubstitutes(text, [sub('onion', 'scallion', 1)], items)).toBe('Add the onion to the scallionless pan.');
   });
 });

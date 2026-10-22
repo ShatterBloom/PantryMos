@@ -5,7 +5,7 @@ import { loadCatalog } from '../../db/catalog.ts';
 import { loadIngredients, loadRecipes, loadSteps } from '../../db/recipes.ts';
 import { availableByItem, itemInfo } from '../../db/sessions.ts';
 import type { Tx } from '../../db/tx.ts';
-import { analyzeRecipe, requireChoice, requireMakeable } from '../../domain/cooking.ts';
+import { analyzeRecipe, requireChoice, requireMakeable, stepWithSubstitutes } from '../../domain/cooking.ts';
 import { PantryError } from '../../domain/errors.ts';
 import { type CatalogItem, findItem } from '../../domain/items.ts';
 import { resolveRecipe } from '../../domain/recipes.ts';
@@ -97,9 +97,10 @@ export function registerStartCooking(server: McpServer, ctx: ToolContext): void 
             quantity: l.quantity,
           }));
         const first = steps[0]!;
+        const firstText = stepWithSubstitutes(first.text, plannedUsage, items);
         return {
-          data: { session_id: sessionId, recipe: recipe.name, servings, ...stepOut(first, steps.length), applied_substitutions: applied },
-          text: `Started ${recipe.name} for ${servings}. Step 1 of ${steps.length}: ${first.text}`,
+          data: { session_id: sessionId, recipe: recipe.name, servings, ...stepOut(first, steps.length, firstText), applied_substitutions: applied },
+          text: `Started ${recipe.name} for ${servings}. Step 1 of ${steps.length}: ${firstText}`,
         };
       }),
   );
