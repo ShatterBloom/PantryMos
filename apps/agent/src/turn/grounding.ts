@@ -27,6 +27,8 @@ const STEP =
 /** "There's a timer set for 60 seconds", "the timer is running", "I've started a timer", "the app set a timer". */
 const TIMER_CLAIMS: readonly RegExp[] = [
   /\btimer\s+(?:is\s+|has\s+been\s+|was\s+)?(?:now\s+)?(?:set|running|started|going)\b/i,
+  // "A timer for 480 seconds (8 minutes) has been set for the pasta" (eval P12).
+  /\btimer\b.*\b(?:is|has\s+been|was)\s+(?:now\s+)?(?:set|running|started|going)\b/i,
   /\b(?:I've|I have|I|the app(?:\s+has)?)\s+(?:just\s+)?(?:set|started)\b.*\btimer\b/i,
 ];
 

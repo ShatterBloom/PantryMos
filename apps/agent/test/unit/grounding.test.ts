@@ -84,6 +84,8 @@ describe('ground', () => {
       "I've started a timer for the eggs.",
       // Of a timer the app was only offering (eval P1).
       'The app set a 60-second timer for the eggs.',
+      // Words between the timer and the claim (eval P12).
+      'A timer for 480 seconds (8 minutes) has been set for the pasta.',
     ]) {
       expect(ground(s, { committed: false })).toEqual({ text: '', claims: [], timers: [s], steps: [] });
       expect(ground(s, { committed: false, timerStarted: true }).text).toBe(s);
