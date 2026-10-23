@@ -158,7 +158,8 @@ async function namedBatch(tx: Tx, householdId: string, batchId: string, today: s
 /** The item from `item`, from the named batch, or both when they agree. */
 function resolveTarget(input: AdjustInput, catalog: readonly CatalogItem[], named: BatchView | undefined): CatalogItem {
   if (input.item === undefined) {
-    if (!named) throw new PantryError('needs_clarification', 'Which item is it?', { ask: 'Which item should I adjust?', required: ['item'] });
+    // No ask: in the eval Nova asked "Which item?" of a user who had said "half the milk" (P9).
+    if (!named) throw new PantryError('needs_clarification', 'Give the item the user named ("half the milk" names milk). Ask which only if they named none.');
     return catalog.find((i) => i.id === named.item_id)!;
   }
   const item = findItem(input.item, catalog);
@@ -187,9 +188,11 @@ async function resolveShare(
     });
   }
   if (input.delta !== undefined || input.set_quantity !== undefined) {
-    throw new PantryError('invalid_quantity', 'Give a share, a change (delta) or a counted quantity, only one of them.', {
-      required: ['share', 'delta', 'set_quantity'],
-    });
+    // No required: in the eval Nova sent both for "I spilled 300 ml", then asked nothing and made no card (P12).
+    throw new PantryError(
+      'invalid_quantity',
+      'Give only one. An amount the user said ("300 ml") is a delta, with no share; a share is only for a part they named, like half.',
+    );
   }
   if (input.reason === 'found_more') throw new PantryError('invalid_quantity', 'A share is for stock that is gone; give found stock as a delta.');
 
