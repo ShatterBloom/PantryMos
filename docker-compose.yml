@@ -65,6 +65,8 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
+      # MODEL_PROVIDER=chatgpt: the callback reaches the agent on the published port 7400.
+      CHATGPT_MODEL: ${CHATGPT_MODEL:-}
     volumes:
       - ~/.aws:/home/node/.aws:ro
     depends_on:

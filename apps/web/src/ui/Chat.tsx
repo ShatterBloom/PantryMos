@@ -136,7 +136,21 @@ function EntryView(props: {
       </div>
     );
   }
-  if (entry.kind === 'notice') return <p className="notice">{entry.text}</p>;
+  if (entry.kind === 'notice') {
+    return (
+      <p className="notice">
+        {entry.text}
+        {entry.link && (
+          <>
+            {' '}
+            <a href={entry.link.href} target="_blank" rel="noreferrer">
+              {entry.link.label}
+            </a>
+          </>
+        )}
+      </p>
+    );
+  }
   const { message } = entry;
   return (
     <div className="mos">

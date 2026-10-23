@@ -17,7 +17,7 @@ function fakeAgent(routes: Record<string, Array<[number, unknown]> | [number, un
     const route = routes[`${method} ${path.split('?')[0]}`];
     if (!route) return new Response('', { status: 404 });
     const [status, body] = Array.isArray(route[0]) ? ((route as Array<[number, unknown]>).shift() ?? [500, {}]) : (route as [number, unknown]);
-    return new Response(body === undefined ? '' : JSON.stringify(body), { status });
+    return new Response(body === undefined ? null : JSON.stringify(body), { status });
   };
   return { calls, fetch };
 }
@@ -26,6 +26,27 @@ let ids = 0;
 const newId = () => `id-${++ids}`;
 
 describe('Api', () => {
+  it('reads the model status and drives Sign in with ChatGPT', async () => {
+    const status = { provider: 'chatgpt', chatgpt: { signed_in: false, email: null, model: null, welcomed: false } };
+    const agent = fakeAgent({
+      'GET /api/model': [200, status],
+      'POST /api/model/chatgpt/sign-in': [200, { authorize_url: 'https://auth.openai.com/x' }],
+      'POST /api/model/chatgpt/welcomed': [204, undefined],
+      'POST /api/model/chatgpt/sign-out': [200, { revoked: false }],
+    });
+    const api = new Api({ fetch: agent.fetch, passcode: async () => null, newId });
+    expect(await api.model()).toEqual(status);
+    expect(await api.chatgptSignIn()).toEqual({ authorize_url: 'https://auth.openai.com/x' });
+    expect(await api.chatgptWelcomed()).toEqual({});
+    expect(await api.chatgptSignOut()).toEqual({ revoked: false });
+    expect(agent.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      'GET /api/model',
+      'POST /api/model/chatgpt/sign-in',
+      'POST /api/model/chatgpt/welcomed',
+      'POST /api/model/chatgpt/sign-out',
+    ]);
+  });
+
   it('sends chat, card actions and acks with fresh request ids', async () => {
     const agent = fakeAgent({
       'POST /api/chat': [200, { message_ids: [1] }],

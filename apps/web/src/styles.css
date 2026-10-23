@@ -137,6 +137,40 @@ h3 {
   flex-wrap: wrap;
 }
 
+/* Sign in with ChatGPT: the black "Continue with ChatGPT" button, and the plan indicator. */
+.btn-chatgpt {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #000;
+  background: #000;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-chatgpt:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.plan {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.plan-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.plan-link,
+.notice a {
+  color: inherit;
+  font-weight: 600;
+}
+
 .btn-handsfree {
   display: inline-flex;
   align-items: center;

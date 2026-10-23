@@ -73,6 +73,7 @@ describe('Chat', () => {
         { kind: 'user', key: 'u1', text: 'what is expiring?', mode: 'voice' },
         mos(1, 'Your spinach expires today.'),
         { kind: 'notice', key: 'n1', text: 'Mos is offline.' },
+        { kind: 'notice', key: 'n2', text: 'Out of plan usage.', link: { href: 'https://chatgpt.com/settings/usage', label: 'Manage usage' } },
         mos(2, 'Time is up for the pasta.', [], { turn_type: 'proactive' }),
       ],
       thinking: true,
@@ -81,6 +82,9 @@ describe('Chat', () => {
     expect(screen.getByText('what is expiring?').querySelector('svg')).toBeTruthy();
     expect(screen.getByText('Your spinach expires today.').className).toBe('bubble bubble-mos');
     expect(screen.getByText('Mos is offline.').className).toBe('notice');
+    const manage = screen.getByRole('link', { name: 'Manage usage' });
+    expect(manage.getAttribute('href')).toBe('https://chatgpt.com/settings/usage');
+    expect(manage.closest('.notice')?.textContent).toBe('Out of plan usage. Manage usage');
     expect(screen.getByText('Time is up for the pasta.').className).toBe('bubble bubble-mos bubble-proactive');
     expect(screen.getByLabelText('Mos is thinking')).toBeTruthy();
   });

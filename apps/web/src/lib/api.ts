@@ -107,6 +107,12 @@ export interface Ledger {
   operations: LedgerOperation[];
 }
 
+/** The model the agent runs on; `chatgpt` is set when that is a ChatGPT plan (Sign in with ChatGPT). */
+export interface ModelStatus {
+  provider: string;
+  chatgpt: { signed_in: boolean; email: string | null; model: string | null; welcomed: boolean } | null;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: Record<string, unknown>;
@@ -196,6 +202,23 @@ export class Api {
 
   ledger(limit = 50) {
     return this.request<Ledger>('GET', `/api/ledger?limit=${limit}`);
+  }
+
+  model() {
+    return this.request<ModelStatus>('GET', '/api/model');
+  }
+
+  /** Starts Sign in with ChatGPT: the URL to send the browser to. */
+  chatgptSignIn() {
+    return this.request<{ authorize_url: string }>('POST', '/api/model/chatgpt/sign-in', {});
+  }
+
+  chatgptWelcomed() {
+    return this.request<Record<string, never>>('POST', '/api/model/chatgpt/welcomed', {});
+  }
+
+  chatgptSignOut() {
+    return this.request<{ revoked: boolean }>('POST', '/api/model/chatgpt/sign-out', {});
   }
 
   /** One request; a lost session (401) signs in again and retries once. */

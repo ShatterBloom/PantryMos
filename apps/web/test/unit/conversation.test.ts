@@ -102,7 +102,7 @@ describe('Conversation', () => {
       memory,
       newId: () => 'conv-1',
       now: () => now,
-      hooks: { onStep: () => events.push('step'), onMealRecorded: () => events.push('meal') },
+      hooks: { onStep: () => events.push('step'), onMealRecorded: () => events.push('meal'), onModelUnavailable: () => events.push('model') },
     });
     return conversation;
   };
@@ -179,6 +179,23 @@ describe('Conversation', () => {
     api.chatError = new ApiError(429, {});
     await conversation.send('hi', 'text');
     expect(conversation.getState().entries.at(-1)).toMatchObject({ kind: 'notice', text: 'Too many requests. Wait a moment and try again.' });
+  });
+
+  it("says why the model can't answer, links to the plan's usage when it ran out, and reports it", async () => {
+    const conversation = build();
+    await conversation.poll();
+    api.chatError = new ApiError(503, { code: 'model_unavailable', reason: 'usage_limit', message: 'The ChatGPT plan has reached its usage limit for this app.' });
+    await conversation.send('hi', 'text');
+    expect(conversation.getState().entries.at(-1)).toEqual({
+      kind: 'notice',
+      key: expect.any(String),
+      text: 'The ChatGPT plan has reached its usage limit for this app.',
+      link: { href: 'https://chatgpt.com/settings/usage', label: 'Manage usage' },
+    });
+    api.chatError = new ApiError(503, { code: 'model_unavailable', reason: 'signed_out', message: 'Sign in with ChatGPT to talk to Mos.' });
+    await conversation.send('hello?', 'text');
+    expect(conversation.getState().entries.at(-1)).toEqual({ kind: 'notice', key: expect.any(String), text: 'Sign in with ChatGPT to talk to Mos.' });
+    expect(events).toEqual(['model', 'model']);
   });
 
   it('opens the voice window once a question has been heard, until it ends or is answered', async () => {

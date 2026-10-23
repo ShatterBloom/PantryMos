@@ -4,12 +4,15 @@ import { address } from './lib/addressing.ts';
 import { Api } from './lib/api.ts';
 import { Conversation } from './lib/conversation.ts';
 import { HandsFreeController, type HandsFreeState } from './lib/handsFree.ts';
+import { Plan } from './lib/plan.ts';
 import { Speaker, type Synth } from './lib/speaker.ts';
 
 export interface Services {
   api: Api;
   speaker: Speaker;
   conversation: Conversation;
+  /** The ChatGPT plan the agent may run on. */
+  plan: Plan;
   /** Null where the browser has no speech recognition (§8.7: Chrome). */
   handsFree: HandsFreeController | null;
   pushToTalk: { start(): void; stop(): void } | null;
@@ -26,6 +29,7 @@ const silentSynth: Synth = {
 export function createServices(askPasscode: () => Promise<string | null>): Services {
   const clock = { setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms), clearTimeout: (h: unknown) => clearTimeout(h as number) };
   const api = new Api({ fetch: (input, init) => fetch(input, init), passcode: askPasscode, newId: () => crypto.randomUUID() });
+  const plan = new Plan(api, (url) => window.location.assign(url));
 
   let handsFree: HandsFreeController | null = null;
   // The speaker reports to the conversation, which speaks through the speaker.
@@ -41,7 +45,11 @@ export function createServices(askPasscode: () => Promise<string | null>): Servi
     memory: localMemory,
     newId: () => crypto.randomUUID(),
     now: () => Date.now(),
-    hooks: { onStep: () => handsFree?.sessionStarted(), onMealRecorded: () => handsFree?.sessionEnded() },
+    hooks: {
+      onStep: () => handsFree?.sessionStarted(),
+      onMealRecorded: () => handsFree?.sessionEnded(),
+      onModelUnavailable: () => void plan.refresh().catch(() => {}),
+    },
   });
   conversation = convo;
 
@@ -106,6 +114,7 @@ export function createServices(askPasscode: () => Promise<string | null>): Servi
     api,
     speaker,
     conversation: convo,
+    plan,
     handsFree,
     pushToTalk,
     handsFreeState: () => state,

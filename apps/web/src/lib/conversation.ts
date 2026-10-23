@@ -4,10 +4,13 @@ import type { WindowKind } from './addressing.ts';
 import { type Api, ApiError, type Message, type ProposalCard, type ProposalStatus, type ProposalView } from './api.ts';
 import type { Speaker, Spoken } from './speaker.ts';
 
+/** Where a ChatGPT plan's usage is managed. */
+export const MANAGE_USAGE_URL = 'https://chatgpt.com/settings/usage';
+
 export type Entry =
   | { kind: 'user'; key: string; text: string; mode: 'voice' | 'text' }
   | { kind: 'mos'; key: string; message: Message }
-  | { kind: 'notice'; key: string; text: string };
+  | { kind: 'notice'; key: string; text: string; link?: { href: string; label: string } };
 
 export interface ConversationState {
   entries: Entry[];
@@ -23,6 +26,8 @@ export interface ConversationHooks {
   onStep?: () => void;
   /** A meal was recorded (its consumption card committed): the cooking session is over. */
   onMealRecorded?: () => void;
+  /** The model refused the chat (signed out of ChatGPT, out of plan usage): its status changed. */
+  onModelUnavailable?: () => void;
 }
 
 /** What survives a reload, per browser (localStorage): the conversation and what the user said in it. */
@@ -85,7 +90,13 @@ export class Conversation {
     try {
       await this.api.chat(this.conversationId, trimmed, mode);
     } catch (err) {
-      this.notice(describe(err));
+      if (err instanceof ApiError && err.body.code === 'model_unavailable') {
+        // Out of plan usage: managing it is the way on (Sign in with ChatGPT UI guidelines).
+        this.notice(describe(err), err.body.reason === 'usage_limit' ? { href: MANAGE_USAGE_URL, label: 'Manage usage' } : undefined);
+        this.hooks.onModelUnavailable?.();
+      } else {
+        this.notice(describe(err));
+      }
     } finally {
       this.set({ thinking: false });
     }
@@ -152,8 +163,8 @@ export class Conversation {
   }
 
   /** Shows a line from the app itself (e.g. why the microphone stopped). */
-  notice(text: string): void {
-    this.set({ entries: [...this.state.entries, { kind: 'notice', key: `n${++this.noticeSeq}`, text }] });
+  notice(text: string, link?: { href: string; label: string }): void {
+    this.set({ entries: [...this.state.entries, { kind: 'notice', key: `n${++this.noticeSeq}`, text, ...(link ? { link } : {}) }] });
   }
 
   private async fetchMessages(): Promise<void> {
@@ -252,6 +263,7 @@ const mosEntry = (message: Message): Entry => ({ kind: 'mos', key: `m${message.i
 /** A failed request, in words for the user. */
 export function describe(err: unknown): string {
   if (err instanceof ApiError) {
+    if (err.body.code === 'model_unavailable' && typeof err.body.message === 'string') return err.body.message;
     if (err.status === 429) return 'Too many requests. Wait a moment and try again.';
     if (err.status === 503) return 'Mos is still answering. Try again in a moment.';
     if (err.status === 409 && typeof err.body.message === 'string') return err.body.message;

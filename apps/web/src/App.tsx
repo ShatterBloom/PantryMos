@@ -3,7 +3,9 @@ import { type FormEvent, useEffect, useState, useSyncExternalStore } from 'react
 import { forgetConversation, speechRecognitionAvailable } from './browser.ts';
 import { createServices, type Services } from './services.ts';
 import { Chat, MicIcon } from './ui/Chat.tsx';
+import { signInResult } from './lib/plan.ts';
 import { KitchenPanel, LedgerPanel, TimersStrip } from './ui/Panels.tsx';
+import { PlanControls, PlanWelcome } from './ui/Plan.tsx';
 
 /** The passcode prompt, asked by the API client when a deployed agent needs one (§11.4). */
 let askForPasscode: ((resolve: (passcode: string | null) => void) => void) | null = null;
@@ -18,7 +20,7 @@ const services: Services = createServices(
 type Tab = 'kitchen' | 'ledger';
 
 export function App() {
-  const { conversation, api, handsFree, speaker } = services;
+  const { conversation, api, handsFree, speaker, plan } = services;
   const [tab, setTab] = useState<Tab>('kitchen');
   const [muted, setMuted] = useState(false);
   const [passcodeRequest, setPasscodeRequest] = useState<((passcode: string | null) => void) | null>(null);
@@ -38,7 +40,17 @@ export function App() {
       }
       if (alive) timer = setTimeout(tick, 2000);
     };
-    void api.ensureSession().catch(() => {}).finally(() => void tick());
+    // Back from Sign in with ChatGPT: say how it went once, and drop it from the address.
+    const result = signInResult(window.location.search);
+    if (new URLSearchParams(window.location.search).has('chatgpt')) window.history.replaceState(null, '', window.location.pathname);
+    if (result) conversation.notice(result);
+    void api
+      .ensureSession()
+      .catch(() => {})
+      .finally(() => {
+        void plan.refresh().catch(() => {});
+        void tick();
+      });
     const leave = () => speaker.stop();
     window.addEventListener('pagehide', leave);
     return () => {
@@ -47,7 +59,7 @@ export function App() {
       askForPasscode = null;
       window.removeEventListener('pagehide', leave);
     };
-  }, [api, conversation, speaker]);
+  }, [api, conversation, speaker, plan]);
 
   const toggleMute = () => {
     speaker.setMuted(!muted);
@@ -72,6 +84,7 @@ export function App() {
           </div>
         </div>
         <div className="controls">
+          <PlanControls plan={plan} onProblem={(text) => conversation.notice(text)} />
           {handsFree ? (
             <button
               className={`btn-handsfree${listening.enabled ? ' is-on' : ''}`}
@@ -112,6 +125,8 @@ export function App() {
           {tab === 'kitchen' ? <KitchenPanel api={api} /> : <LedgerPanel api={api} />}
         </aside>
       </main>
+
+      <PlanWelcome plan={plan} />
 
       {passcodeRequest && (
         <PasscodeDialog
