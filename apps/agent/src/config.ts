@@ -28,10 +28,32 @@ const OpenAISchema = z.object({
   timeoutMs: z.coerce.number().int().positive().default(60_000),
 });
 
+export const CHATGPT_CALLBACK_PATH = '/auth/chatgpt/callback';
+
+/**
+ * A ChatGPT plan, through Sign in with ChatGPT. OpenAI accepts only an http 127.0.0.1 loopback
+ * callback whose path stays the same after the first sign-in; only its port may change.
+ */
+const ChatGPTSchema = z.object({
+  /** Unset: the plan's default, the first model in its catalog. */
+  model: z.string().min(1).optional(),
+  callbackUrl: z.url().refine((u) => {
+    const url = new URL(u);
+    return url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.pathname === CHATGPT_CALLBACK_PATH;
+  }, `The ChatGPT callback must be http://127.0.0.1:<port>${CHATGPT_CALLBACK_PATH}`),
+  /** Where the browser returns after signing in; unset, the first of AGENT_APP_ORIGINS. */
+  returnUrl: z.url().optional(),
+  authUrl: z.url().default('https://auth.openai.com'),
+  apiUrl: z.url().default('https://api.openai.com/v1'),
+  maxTokens: z.coerce.number().int().min(64).max(4096).default(1024),
+  timeoutMs: z.coerce.number().int().positive().default(120_000),
+});
+
 /** The model the agent talks to. Bedrock is the one the prompt and guardrails were tuned and evaluated on. */
 const ModelSchema = z.discriminatedUnion('provider', [
   BedrockSchema.extend({ provider: z.literal('bedrock') }),
   OpenAISchema.extend({ provider: z.literal('openai') }),
+  ChatGPTSchema.extend({ provider: z.literal('chatgpt') }),
 ]);
 
 const ConfigSchema = z.object({
@@ -97,17 +119,34 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
   });
 }
 
-const modelEnv = (env: NodeJS.ProcessEnv) =>
-  (env.MODEL_PROVIDER || 'bedrock') === 'openai'
-    ? {
-        provider: 'openai',
-        baseUrl: env.OPENAI_BASE_URL || undefined,
-        apiKey: env.OPENAI_API_KEY || undefined,
-        model: env.OPENAI_MODEL || undefined,
-        maxTokens: env.OPENAI_MAX_TOKENS,
-        timeoutMs: env.OPENAI_TIMEOUT_MS,
-      }
-    : { provider: env.MODEL_PROVIDER || 'bedrock', ...bedrockEnv(env) };
+const modelEnv = (env: NodeJS.ProcessEnv) => {
+  const provider = env.MODEL_PROVIDER || 'bedrock';
+  if (provider === 'openai') {
+    return {
+      provider,
+      baseUrl: env.OPENAI_BASE_URL || undefined,
+      apiKey: env.OPENAI_API_KEY || undefined,
+      model: env.OPENAI_MODEL || undefined,
+      maxTokens: env.OPENAI_MAX_TOKENS,
+      timeoutMs: env.OPENAI_TIMEOUT_MS,
+    };
+  }
+  if (provider === 'chatgpt') {
+    // The browser reaches the agent on its published port, which is AGENT_PORT unless mapped.
+    const port = env.CHATGPT_CALLBACK_PORT || env.AGENT_PORT || '7400';
+    return {
+      provider,
+      model: env.CHATGPT_MODEL || undefined,
+      callbackUrl: `http://127.0.0.1:${port}${CHATGPT_CALLBACK_PATH}`,
+      returnUrl: env.CHATGPT_RETURN_URL || undefined,
+      authUrl: env.CHATGPT_AUTH_URL || undefined,
+      apiUrl: env.CHATGPT_API_URL || undefined,
+      maxTokens: env.CHATGPT_MAX_TOKENS,
+      timeoutMs: env.CHATGPT_TIMEOUT_MS,
+    };
+  }
+  return { provider, ...bedrockEnv(env) };
+};
 
 const bedrockEnv = (env: NodeJS.ProcessEnv) => ({
   region: env.BEDROCK_REGION ?? env.AWS_REGION,

@@ -2,6 +2,8 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { registerAuth } from './auth.ts';
+import type { ChatGPTAccount } from './chatgpt/account.ts';
+import { registerModelRoutes } from './chatgpt/routes.ts';
 import type { AgentConfig } from './config.ts';
 import type { Pool } from './db.ts';
 import { InternalClient } from './internalClient.ts';
@@ -21,6 +23,8 @@ export interface HealthReport {
 
 export interface AgentOptions {
   model: ModelClient;
+  /** The ChatGPT sign-in the model runs on, when it runs on a ChatGPT plan. */
+  chatgpt?: ChatGPTAccount | null;
   /** How turns reach the MCP server; defaults to the configured URL and token. */
   connectMcp?: TurnDeps['connectMcp'];
   log?: boolean;
@@ -103,6 +107,12 @@ export async function buildAgentApp(config: AgentConfig, pool: Pool, options: Ag
 
     report.ok = report.db && report.mcp.ok && report.internal;
     return reply.code(report.ok ? 200 : 503).send(report);
+  });
+
+  registerModelRoutes(app, {
+    provider: config.model.provider,
+    account: options.chatgpt ?? null,
+    returnUrl: (config.model.provider === 'chatgpt' && config.model.returnUrl) || `${config.appOrigins[0]}/`,
   });
 
   registerRoutes(app, {

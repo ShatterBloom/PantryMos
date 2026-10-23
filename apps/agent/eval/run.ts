@@ -1,6 +1,6 @@
 // `pnpm eval [--only P1,G1] [--repeat 3]`: runs the eval cases against real Bedrock (§9.4, §9.6, §9.9)
 // and writes docs/eval-log.md, plus every exchange to apps/agent/eval/out/ for debugging.
-// BEDROCK_MODEL_ID picks the model under test, as for the agent; EVAL_EXTRACTOR_MODEL_ID pins the
+// MODEL_PROVIDER and its settings pick the model under test, as for the agent; EVAL_EXTRACTOR_MODEL_ID pins the
 // reply-check extractor (default: the same model), so two models can be compared by one judge.
 // It recreates the throwaway test database, so it must not run alongside the test suite.
 import { execFileSync } from 'node:child_process';
@@ -10,6 +10,7 @@ import { startServers } from '@pantrymos/mcp-server';
 import { mcpTestConfig } from '../../../test/fixtures.ts';
 import setupTestDatabase from '../../../test/global-setup.ts';
 import { loadBedrockConfig, loadModelConfig } from '../src/config.ts';
+import { createPool } from '../src/db.ts';
 import { createModel, modelName } from '../src/model/create.ts';
 import { CASES } from './cases.ts';
 import { BedrockClaimExtractor } from './extractor.ts';
@@ -36,7 +37,9 @@ const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding:
 
 const checkLedger = await setupTestDatabase();
 const servers = await startServers(mcpTestConfig(), { log: false });
-const model = createModel(modelConfig);
+// A ChatGPT plan's sign-in lives in the dev database (sign in from the app first), not the test one.
+const signInPool = modelConfig.provider === 'chatgpt' ? createPool(process.env.AGENT_DATABASE_URL ?? '') : null;
+const { model } = createModel(modelConfig, signInPool!);
 const extractorModelId = process.env.EVAL_EXTRACTOR_MODEL_ID || bedrock.modelId;
 const extractor = new BedrockClaimExtractor({ region: bedrock.region, modelId: extractorModelId });
 const results: CaseResult[] = [];
@@ -52,6 +55,7 @@ try {
   }
 } finally {
   await servers.close();
+  await signInPool?.end();
 }
 // R17 still holds after everything the cases did (I1: batch quantity = Σ events).
 await checkLedger();

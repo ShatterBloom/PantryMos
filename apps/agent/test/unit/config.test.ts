@@ -70,6 +70,23 @@ describe('agent loadConfig', () => {
     expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'gemini' })).toThrow();
   });
 
+  it('selects a ChatGPT plan with MODEL_PROVIDER=chatgpt, its callback on the agent port', () => {
+    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt' }).model).toEqual({
+      provider: 'chatgpt',
+      callbackUrl: 'http://127.0.0.1:7400/auth/chatgpt/callback',
+      authUrl: 'https://auth.openai.com',
+      apiUrl: 'https://api.openai.com/v1',
+      maxTokens: 1024,
+      timeoutMs: 120_000,
+    });
+    // Only the port can change: the agent's, or the published one when docker maps it elsewhere.
+    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt', AGENT_PORT: '9000' }).model).toMatchObject({ callbackUrl: 'http://127.0.0.1:9000/auth/chatgpt/callback' });
+    expect(
+      loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt', AGENT_PORT: '7400', CHATGPT_CALLBACK_PORT: '8400', CHATGPT_MODEL: 'gpt-x', CHATGPT_RETURN_URL: 'http://localhost:5173/' }).model,
+    ).toMatchObject({ callbackUrl: 'http://127.0.0.1:8400/auth/chatgpt/callback', model: 'gpt-x', returnUrl: 'http://localhost:5173/' });
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt', CHATGPT_CALLBACK_PORT: 'x' })).toThrow();
+  });
+
   it('rejects malformed URLs, short tokens and a missing household', () => {
     expect(() => loadConfig({ ...REQUIRED, AGENT_MCP_URL: 'not a url' })).toThrow();
     expect(() => loadConfig({ ...REQUIRED, AGENT_MCP_TOKEN: 'short' })).toThrow(/AGENT_MCP_TOKEN/);

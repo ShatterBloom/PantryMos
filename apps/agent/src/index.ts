@@ -5,7 +5,8 @@ import { createModel } from './model/create.ts';
 
 const config = loadConfig();
 const pool = createPool(config.databaseUrl);
-const { app } = await buildAgentApp(config, pool, { model: createModel(config.model) });
+const { model, chatgpt } = createModel(config.model, pool);
+const { app } = await buildAgentApp(config, pool, { model, chatgpt });
 await app.listen({ host: config.bindHost, port: config.port });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

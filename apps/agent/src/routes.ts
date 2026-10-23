@@ -5,6 +5,7 @@ import type { AgentConfig } from './config.ts';
 import type { Pool } from './db.ts';
 import { runGate } from './gate/confirmGate.ts';
 import type { InternalClient, InternalResponse, ProposalView } from './internalClient.ts';
+import { ModelUnavailableError } from './model/types.ts';
 import { conversationExists, ensureConversation } from './store/conversations.ts';
 import { insertEvent } from './store/events.ts';
 import { LeaseBusyError, type LeaseTiming, withLease } from './store/lease.ts';
@@ -280,6 +281,10 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       await abandonRequest(pool, key.conversationId, key.requestId).catch(() => {});
       if (err instanceof LeaseBusyError) {
         return reply.code(503).header('retry-after', '1').send({ code: 'busy', message: 'Mos is still answering. Try again in a moment.' });
+      }
+      // Not a fault: the app says what to do (sign in again, or manage the plan's usage).
+      if (err instanceof ModelUnavailableError) {
+        return reply.code(503).send({ code: 'model_unavailable', reason: err.reason, message: err.message });
       }
       throw err;
     }
