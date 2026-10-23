@@ -149,6 +149,13 @@ describe('proactive turns', () => {
     await tick();
     expect(agent.model.requests).toHaveLength(before + 3);
     expect((await proactive()).map((m) => m.speech)).toEqual(["Timer 'rice' is done."]);
+    // The next turn's history ends the timer's turn with what was said, not with tool results.
+    agent.model.push(say('Okay.'));
+    await chat(agent, 'thanks');
+    expect(agent.model.requests.at(-1)!.messages.slice(-2)).toEqual([
+      { role: 'assistant', content: [{ text: "Timer 'rice' is done." }] },
+      { role: 'user', content: [{ text: 'thanks' }] },
+    ]);
   });
 
   /** Claims the conversation's events as a worker would, then "dies" before running a turn. */

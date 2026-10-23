@@ -87,6 +87,20 @@ describe('a scripted chat: intake → cook → consume', () => {
     expect(session).toEqual({ current_step: 1 });
   });
 
+  it('keeps what the user heard in the history when the model said nothing', async () => {
+    await stockKitchen(kitchen, { egg: 6, tomato: 4, 'olive oil': 100, scallion: 2 });
+    agent.model.push(callTools(['start_cooking', { recipe_name: 'tomato egg stir-fry' }]), say(''));
+    await chat(agent, "Let's make tomato egg stir-fry");
+    const heard = (await lastMessage(agent)).speech;
+    expect(heard).toMatch(/^Step 1: /);
+    agent.model.push(say('Take your time.'));
+    await chat(agent, 'hold on');
+    expect(agent.model.requests.at(-1)!.messages.slice(-2)).toEqual([
+      { role: 'assistant', content: [{ text: heard }] },
+      { role: 'user', content: [{ text: 'hold on' }] },
+    ]);
+  });
+
   it('adds groceries, cooks the recipe step by step, and records what was used', async () => {
     await stockKitchen(kitchen, { tomato: 4, 'olive oil': 100, scallion: 2 });
 

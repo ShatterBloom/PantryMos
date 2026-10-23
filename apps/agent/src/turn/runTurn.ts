@@ -361,6 +361,12 @@ async function finishTurn(
 
   const trace: TraceEntry[] = calls.map((c) => ({ name: c.name, input: c.final_input, isError: c.result!.isError, output: c.result!.data }));
   const messageId = await lease.write(async (tx) => {
+    // When the model's own words left nothing (a reply all left out, or no reply within the cap), the
+    // history keeps what the user heard. Otherwise Nova learns from its silence and answers "next"
+    // with get_session until the cap (demo capture, after a step whose timer the app offered).
+    if (!last || last.role !== 'assistant' || !last.content.some((b) => isText(b) && b.text.trim() !== '')) {
+      await appendMessage(tx, conversationId, 'assistant', [{ text: speech }]);
+    }
     if (voicePrompt) await closeOpenWindows(tx, conversationId);
     const id = await insertOutbound(tx, {
       conversationId,
