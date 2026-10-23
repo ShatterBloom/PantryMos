@@ -1,6 +1,7 @@
 // Any OpenAI-compatible Chat Completions endpoint: OpenAI, or a local server such as Ollama, LM Studio
 // or vLLM (their `/v1` API). The turn loop keeps the Bedrock Converse shape; this maps it both ways.
 import { randomUUID } from 'node:crypto';
+import { withoutUnicodePatterns } from './toolSchema.ts';
 import type { ContentBlock, Message, ModelClient, ModelRequest, ModelResponse, ToolResult } from './types.ts';
 
 export interface OpenAIOptions {
@@ -54,21 +55,6 @@ export function toChatRequest(request: ModelRequest, options: Pick<OpenAIOptions
     max_tokens: options.maxTokens,
     temperature: 0,
   };
-}
-
-/**
- * OpenAI refuses a whole request whose tool schemas hold a `pattern` with a Unicode property escape
- * (the MCP tools' `^[^\p{Cc}]*$`: "is not a 'regex'"). Such patterns are left out of what the model
- * sees; the MCP server still checks every input against its own schema.
- */
-function withoutUnicodePatterns(schema: unknown): unknown {
-  if (Array.isArray(schema)) return schema.map(withoutUnicodePatterns);
-  if (typeof schema !== 'object' || schema === null) return schema;
-  return Object.fromEntries(
-    Object.entries(schema)
-      .filter(([key, value]) => !(key === 'pattern' && typeof value === 'string' && /\\[pP]\{/.test(value)))
-      .map(([key, value]) => [key, withoutUnicodePatterns(value)]),
-  );
 }
 
 /**
