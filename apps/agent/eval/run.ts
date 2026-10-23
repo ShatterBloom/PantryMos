@@ -9,8 +9,8 @@ import { parseArgs } from 'node:util';
 import { startServers } from '@pantrymos/mcp-server';
 import { mcpTestConfig } from '../../../test/fixtures.ts';
 import setupTestDatabase from '../../../test/global-setup.ts';
-import { loadBedrockConfig } from '../src/config.ts';
-import { BedrockModel } from '../src/model/bedrock.ts';
+import { loadBedrockConfig, loadModelConfig } from '../src/config.ts';
+import { createModel, modelName } from '../src/model/create.ts';
 import { CASES } from './cases.ts';
 import { BedrockClaimExtractor } from './extractor.ts';
 import { type CaseResult, passed, runCase } from './harness.ts';
@@ -28,13 +28,15 @@ if (!Number.isInteger(repeat) || repeat < 1) throw new Error('--repeat must be a
 const cases = CASES.filter((c) => !only || only.includes(c.id.toUpperCase()));
 if (cases.length === 0) throw new Error(`No case matches --only ${values.only}`);
 
+// The model under test follows MODEL_PROVIDER; the claim extractor always runs on Bedrock.
+const modelConfig = loadModelConfig();
 const bedrock = loadBedrockConfig();
 const startedAt = new Date();
 const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
 
 const checkLedger = await setupTestDatabase();
 const servers = await startServers(mcpTestConfig(), { log: false });
-const model = new BedrockModel(bedrock);
+const model = createModel(modelConfig);
 const extractorModelId = process.env.EVAL_EXTRACTOR_MODEL_ID || bedrock.modelId;
 const extractor = new BedrockClaimExtractor({ region: bedrock.region, modelId: extractorModelId });
 const results: CaseResult[] = [];
@@ -54,7 +56,7 @@ try {
 // R17 still holds after everything the cases did (I1: batch quantity = Σ events).
 await checkLedger();
 
-const info = { startedAt, modelId: bedrock.modelId, extractorModelId, commit, repeat };
+const info = { startedAt, modelId: modelName(modelConfig), extractorModelId, commit, repeat };
 mkdirSync('docs', { recursive: true });
 writeFileSync('docs/eval-log.md', renderReport(info, results));
 const outDir = 'apps/agent/eval/out';

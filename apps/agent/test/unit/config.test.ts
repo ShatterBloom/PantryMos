@@ -27,7 +27,7 @@ describe('agent loadConfig', () => {
       appOrigins: ['http://localhost:7400', 'http://127.0.0.1:7400'],
       chatRatePerMinute: 30,
       session: { secret: REQUIRED.AGENT_SESSION_SECRET, secureCookie: false, ttlSeconds: 43_200 },
-      bedrock: { region: 'ap-southeast-2', modelId: 'global.amazon.nova-2-lite-v1:0', maxTokens: 1024 },
+      model: { provider: 'bedrock', region: 'ap-southeast-2', modelId: 'global.amazon.nova-2-lite-v1:0', maxTokens: 1024 },
     });
   });
 
@@ -48,9 +48,26 @@ describe('agent loadConfig', () => {
       port: 9000,
       bodyLimitBytes: 2048,
       appOrigins: ['http://localhost:5173', 'http://localhost:7400'],
-      bedrock: { region: 'us-east-1', modelId: 'amazon.nova-lite-v1:0', maxTokens: 512 },
+      model: { provider: 'bedrock', region: 'us-east-1', modelId: 'amazon.nova-lite-v1:0', maxTokens: 512 },
     });
-    expect(loadConfig({ ...REQUIRED, AWS_REGION: 'us-east-1', BEDROCK_REGION: 'us-west-2' }).bedrock.region).toBe('us-west-2');
+    expect(loadConfig({ ...REQUIRED, AWS_REGION: 'us-east-1', BEDROCK_REGION: 'us-west-2' }).model).toMatchObject({ region: 'us-west-2' });
+  });
+
+  it('selects an OpenAI-compatible model with MODEL_PROVIDER=openai', () => {
+    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'openai', OPENAI_MODEL: 'gpt-4.1-mini', OPENAI_API_KEY: 'sk-test' }).model).toEqual({
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-4.1-mini',
+      maxTokens: 1024,
+      timeoutMs: 60_000,
+    });
+    // A local server: its own URL, no key (compose passes an empty one).
+    expect(
+      loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'openai', OPENAI_BASE_URL: 'http://127.0.0.1:11434/v1', OPENAI_MODEL: 'qwen3:8b', OPENAI_API_KEY: '', OPENAI_MAX_TOKENS: '2048' }).model,
+    ).toEqual({ provider: 'openai', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', maxTokens: 2048, timeoutMs: 60_000 });
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'openai' })).toThrow(/OPENAI_MODEL/);
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'gemini' })).toThrow();
   });
 
   it('rejects malformed URLs, short tokens and a missing household', () => {

@@ -58,8 +58,13 @@ services:
       AGENT_INTERNAL_URL: http://127.0.0.1:7411
       AGENT_SESSION_SECRET: ${AGENT_SESSION_SECRET:-dev-session-secret-change-me-0123456789}
       AGENT_PASSCODE: ${AGENT_PASSCODE:-}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-bedrock}
       # Bedrock credentials: a profile from the host's ~/.aws, mounted read-only.
       AWS_PROFILE: ${AWS_PROFILE:-pantrymos-bedrock}
+      # MODEL_PROVIDER=openai: any OpenAI-compatible Chat Completions API.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
     volumes:
       - ~/.aws:/home/node/.aws:ro
     depends_on:

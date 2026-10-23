@@ -18,6 +18,22 @@ const BedrockSchema = z.object({
   maxTokens: z.coerce.number().int().min(64).max(4096).default(1024),
 });
 
+/** Any OpenAI-compatible Chat Completions API: OpenAI, or a local server such as Ollama or vLLM. */
+const OpenAISchema = z.object({
+  baseUrl: z.url().default('https://api.openai.com/v1'),
+  /** Local servers usually need none. */
+  apiKey: z.string().min(1).optional(),
+  model: z.string({ error: 'OPENAI_MODEL is required when MODEL_PROVIDER=openai' }).min(1),
+  maxTokens: z.coerce.number().int().min(64).max(4096).default(1024),
+  timeoutMs: z.coerce.number().int().positive().default(60_000),
+});
+
+/** The model the agent talks to. Bedrock is the one the prompt and guardrails were tuned and evaluated on. */
+const ModelSchema = z.discriminatedUnion('provider', [
+  BedrockSchema.extend({ provider: z.literal('bedrock') }),
+  OpenAISchema.extend({ provider: z.literal('openai') }),
+]);
+
 const ConfigSchema = z.object({
   databaseUrl: z.string().min(1),
   bindHost: z.string().default('127.0.0.1'),
@@ -51,7 +67,7 @@ const ConfigSchema = z.object({
       .transform((v) => v === 'true'),
     ttlSeconds: z.coerce.number().int().positive().default(12 * 3600),
   }),
-  bedrock: BedrockSchema,
+  model: ModelSchema,
 });
 
 export type AgentConfig = z.infer<typeof ConfigSchema>;
@@ -77,9 +93,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
       secureCookie: env.AGENT_SECURE_COOKIE,
       ttlSeconds: env.AGENT_SESSION_TTL_SECONDS,
     },
-    bedrock: bedrockEnv(env),
+    model: modelEnv(env),
   });
 }
+
+const modelEnv = (env: NodeJS.ProcessEnv) =>
+  (env.MODEL_PROVIDER || 'bedrock') === 'openai'
+    ? {
+        provider: 'openai',
+        baseUrl: env.OPENAI_BASE_URL || undefined,
+        apiKey: env.OPENAI_API_KEY || undefined,
+        model: env.OPENAI_MODEL || undefined,
+        maxTokens: env.OPENAI_MAX_TOKENS,
+        timeoutMs: env.OPENAI_TIMEOUT_MS,
+      }
+    : { provider: env.MODEL_PROVIDER || 'bedrock', ...bedrockEnv(env) };
 
 const bedrockEnv = (env: NodeJS.ProcessEnv) => ({
   region: env.BEDROCK_REGION ?? env.AWS_REGION,
@@ -87,7 +115,12 @@ const bedrockEnv = (env: NodeJS.ProcessEnv) => ({
   maxTokens: env.BEDROCK_MAX_TOKENS,
 });
 
-/** The model settings alone, from the same variables, for tools that only talk to Bedrock (the eval). */
-export function loadBedrockConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig['bedrock'] {
+/** The model settings alone, from the same variables, for tools that only talk to the model (the eval). */
+export function loadModelConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig['model'] {
+  return ModelSchema.parse(modelEnv(env));
+}
+
+/** Bedrock's settings alone, for the eval's claim extractor, which always runs on Bedrock. */
+export function loadBedrockConfig(env: NodeJS.ProcessEnv = process.env): z.infer<typeof BedrockSchema> {
   return BedrockSchema.parse(bedrockEnv(env));
 }
