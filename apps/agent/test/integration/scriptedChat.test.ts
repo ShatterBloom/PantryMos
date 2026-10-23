@@ -121,10 +121,13 @@ describe('a scripted chat: intake → cook → consume', () => {
       expect.objectContaining({ toolResult: expect.objectContaining({ status: 'success' }) }),
     ]);
 
-    agent.model.push(callTools(['next_step']), (req) => say(`Step ${lastToolResults(req)[0]!.step_no}. What would you like to do next?`));
+    agent.model.push(callTools(['next_step']), (req) =>
+      say(`Step ${lastToolResults(req)[0]!.step_no}. I'll start a timer for 60 seconds for the eggs. What would you like to do next?`),
+    );
     await chat(agent, 'next');
     expect(await lastMessage(agent)).toMatchObject({
-      // The timer offer is the one question asked: the model's own is left out (eval G5).
+      // The timer offer is the one question asked: the model's own is left out (eval G5), and so is
+      // its timer talk (eval G8).
       speech: 'Step 2: Scramble the eggs in half the oil until just set, then take them out. This step takes 1 minute — start a timer?',
       step_no: 2,
       voice_prompt: { kind: 'timer_offer', label: 'eggs', seconds: 60, step_no: 2 },

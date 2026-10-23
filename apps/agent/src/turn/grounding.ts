@@ -154,6 +154,16 @@ const IMPACT = /\b(?:short|shortfall|carry on|another time|shopping list|substit
  * you have 875 ml left, so we can carry on with less", none of it so). `namesItem` tells whether a
  * sentence names the adjusted item.
  */
+/**
+ * The model's speech without its sentences about a timer, when the app offers the step's timer:
+ * "I'll start a timer for 60 seconds" before "start a timer?" (eval G8).
+ */
+export function withoutTimerTalk(text: string): string {
+  return sentences(text)
+    .filter((s) => !/\btimers?\b/i.test(s))
+    .join(' ');
+}
+
 export function withoutImpactTalk(text: string, namesItem: (sentence: string) => boolean): string {
   return sentences(spoken(text))
     .filter((s) => !IMPACT.test(s) && !namesItem(s))

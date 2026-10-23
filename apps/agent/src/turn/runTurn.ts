@@ -13,7 +13,7 @@ import { closeOpenWindows } from '../store/windows.ts';
 import { isLocalTool, localToolSpecs, runLocalTool } from '../tools/local.ts';
 import { callMcpTool, mcpToolSpecs } from '../tools/mcp.ts';
 import { uuidv5 } from '../uuid.ts';
-import { ground, NO_REPLY, withoutImpactTalk, withoutQuestions, withoutRecital, withoutStepRecital } from './grounding.ts';
+import { ground, NO_REPLY, withoutImpactTalk, withoutQuestions, withoutRecital, withoutStepRecital, withoutTimerTalk } from './grounding.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 import { eventBlock, fallbackSpeech, NOT_CHANGED, TURN_FAILED, timerOffer } from './speech.ts';
 
@@ -351,7 +351,7 @@ async function finishTurn(
   // A card read-back takes precedence over a timer offer in the same message (§8.2).
   if (!voicePrompt && offer?.kind === 'timer_offer' && !(await stepHasTimer(pool, conversationId, offer.session_id, offer.step_no))) {
     // The offer is the one question the user answers (eval G5: "What would you like to do next?" before it).
-    speech = withoutQuestions(speech);
+    speech = withoutTimerTalk(withoutQuestions(speech));
     question = timerOffer(offer.seconds);
     voicePrompt = offer;
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ground, NO_REPLY, withoutImpactTalk, withoutQuestions, withoutRecital, withoutStepRecital } from '../../src/turn/grounding.ts';
+import { ground, NO_REPLY, withoutImpactTalk, withoutQuestions, withoutRecital, withoutStepRecital, withoutTimerTalk } from '../../src/turn/grounding.ts';
 
 describe('ground', () => {
   it('leaves out a claim that the stock changed when no commit backs it', () => {
@@ -149,6 +149,14 @@ describe('withoutImpactTalk', () => {
       ),
     ).toBe('Oh no! Ready for the next step when you are!');
     expect(withoutImpactTalk('That spill is a pity. The meal would be short.', namesMilk)).toBe('That spill is a pity.');
+  });
+});
+
+describe('withoutTimerTalk', () => {
+  it("leaves out the model's timer talk before the app's offer (eval G8)", () => {
+    expect(withoutTimerTalk("I'll start a timer for 60 seconds for the eggs. The eggs go first.")).toBe('The eggs go first.');
+    expect(withoutTimerTalk('A 1-minute timer would help. Timers are handy.')).toBe('');
+    expect(withoutTimerTalk('Nice work so far.')).toBe('Nice work so far.');
   });
 });
 
