@@ -111,6 +111,13 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
         // In the eval Nova answered one "next" with six next_step calls, skipping to the end.
         return toolError('one_step_per_next', 'The user asked for one step per "next". Let them hear this step first.');
       }
+      if (call.name === 'propose_adjustment' && call.final_input.share !== undefined && trigger.type === 'user' && !SHARE_SAID.test(lastUserWords(messages, 2))) {
+        // In the eval Nova made "I spilled 300 ml of milk" half the milk (P12).
+        return toolError(
+          'no_share_said',
+          'The user named no share like "half" or "a third". Give the amount they said as delta, e.g. -300 for "300 ml"; if they said none, ask how much.',
+        );
+      }
       if (call.name === 'propose_consumption' && (await stepDelivered(deps.pool, conversationId, owner))) {
         // In the eval Nova moved on to the last step and proposed the meal in the same turn (P9).
         return toolError('step_not_heard', 'This turn gave the user a new step to cook. Let them hear it; propose the meal when they say "next" or that they are done.');
@@ -377,6 +384,28 @@ async function finishTurn(
 
 /** Words that say which undo: "the whole meal", "just the correction", "everything". */
 export const UNDO_SCOPE_SAID = /\b(?:whole|entire|meal|everything|correction|fix|just|only)\b/i;
+
+/** Words that name a share of an item: "half the milk", "a third", "all the eggs". */
+export const SHARE_SAID = /\b(?:half|halves|thirds?|quarters?|fourths?|all|whole|entire|everything|rest)\b/i;
+
+/**
+ * What the user said in their last `turns` turns: a share may be said a turn before the card
+ * ("I spilled half the milk", "Which half?", "of the recipe").
+ */
+export function lastUserWords(messages: readonly Message[], turns: number): string {
+  return messages
+    .filter((m) => m.role === 'user')
+    .map((m) =>
+      m.content
+        .filter(isText)
+        .map((b) => b.text)
+        .filter((t) => !t.startsWith('[app'))
+        .join(' '),
+    )
+    .filter((t) => t !== '')
+    .slice(-turns)
+    .join(' ');
+}
 
 /** How many steps the user asked for: one per "next" said ("next, next"), at least one. */
 export function nextsSaid(text: string): number {

@@ -1,7 +1,8 @@
 // Turn plumbing without I/O: message shaping for Converse, local tool specs, speech templates.
 import { describe, expect, it } from 'vitest';
 import { localToolSpecs } from '../../src/tools/local.ts';
-import { mentions, nextsSaid, toModelMessages } from '../../src/turn/runTurn.ts';
+import type { Message } from '../../src/model/types.ts';
+import { lastUserWords, mentions, nextsSaid, SHARE_SAID, toModelMessages } from '../../src/turn/runTurn.ts';
 import { duration, eventBlock, fallbackSpeech, timeLeft, timerOffer } from '../../src/turn/speech.ts';
 
 describe('toModelMessages', () => {
@@ -88,5 +89,25 @@ describe('what the user said', () => {
     expect(mentions('scallion', 'onion')).toBe(false);
     expect(mentions('add the half-and-half', 'half-and-half')).toBe(true);
     expect(mentions('axb', 'a.b')).toBe(false); // a name is matched literally
+  });
+
+  it('tells a share the user named from an amount they said (eval P12)', () => {
+    for (const s of ['I spilled half the milk', 'A third of the cream went off', 'I dropped all the eggs', 'Two thirds of it']) {
+      expect(SHARE_SAID.test(s)).toBe(true);
+    }
+    for (const s of ['I spilled 300 ml of milk', 'I dropped two eggs', '100 grams of the spinach went bad', 'of the recipe']) {
+      expect(SHARE_SAID.test(s)).toBe(false);
+    }
+  });
+
+  it("reads the user's last turns, without the app's blocks or tool results", () => {
+    const messages: Message[] = [
+      { role: 'user', content: [{ text: 'I spilled half the milk' }] },
+      { role: 'assistant', content: [{ text: 'Of the milk you have, or of the recipe?' }] },
+      { role: 'user', content: [{ text: '[app event] timer pasta fired.' }, { text: 'of the recipe' }] },
+      { role: 'user', content: [{ toolResult: { toolUseId: 't1', status: 'success', content: [{ json: {} }] } }] },
+    ];
+    expect(lastUserWords(messages, 2)).toBe('I spilled half the milk of the recipe');
+    expect(lastUserWords(messages, 1)).toBe('of the recipe');
   });
 });

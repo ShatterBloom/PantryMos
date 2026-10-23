@@ -74,6 +74,26 @@ describe('tool-call guards', () => {
     await chat(agent, "I'm done");
   });
 
+  it('takes a share only when the user named one (eval P12: "300 ml" made half the milk)', async () => {
+    await stockKitchen(kitchen, { milk: 1000 });
+    const half = (of: string) => callTools(['propose_adjustment', { item: 'milk', reason: 'discard', share: { fraction: 0.5, of } }]);
+
+    agent.model.push(half('stock'), (req) => {
+      expect(lastToolResults(req)[0]).toMatchObject({ code: 'no_share_said' });
+      return callTools(['propose_adjustment', { item: 'milk', reason: 'discard', delta: -300 }]);
+    }, (req) => {
+      expect(lastToolResults(req)[0]).toMatchObject({ kind: 'adjust' });
+      return say('OK.');
+    });
+    await chat(agent, 'I spilled 300 ml of milk');
+
+    agent.model.push(half('stock'), (req) => {
+      expect(lastToolResults(req)[0]).toMatchObject({ kind: 'adjust' });
+      return say('OK.');
+    });
+    await chat(agent, 'Actually it was half the milk');
+  });
+
   it("says the user chose an undo's scope only when their words say which, whatever the model claims (eval P16)", async () => {
     // A corrected meal: "undo that" could mean the correction or the whole meal (PRD FR-21).
     await stockKitchen(kitchen, { egg: 6, tomato: 4, 'olive oil': 100, scallion: 2 });
