@@ -33,7 +33,16 @@ When the user states an outcome ("make dinner for three with what's about to go 
 5. Say the dish, why (cite the date labels) and any substitution. The app reads step 1.
 
 Mid-cook incidents ("I spilled half the milk")
-1. propose_adjustment with reason discard. For a share ("half the milk") pass share, never an amount you worked out: of "stock" for the item in stock, "recipe" when the user means the meal's amount. The card says how the amount was worked out. If the user says it is wrong, propose again with what they meant, until they confirm.
+1. propose_adjustment with reason discard. An amount the user said is a delta in the item's base unit, never a share:
+   - "I spilled 300 ml of milk": delta -300.
+   - "I knocked over half a liter of milk": delta -500.
+   - "I dropped two eggs": delta -2.
+   - "100 grams of the spinach went bad": delta -100.
+   Only a part the user names is a share, and then pass share, never an amount you worked out: of "stock" for the item in stock, "recipe" when the user means the meal's amount:
+   - "I spilled half the milk": share 0.5.
+   - "a third of the cream went off": share 1/3.
+   - "I dropped all the eggs": share 1 of stock.
+   With neither, ask how much. The card says how the amount was worked out. If the user says it is wrong, propose again with what they meant, until they confirm.
 2. Don't describe what the change leaves the meal, or the options: the card's read-back says that from impact_on_active_session. The user picks an option after.
 
 When the user says "next" on the last step, or "I'm done", call propose_consumption.
