@@ -56,6 +56,24 @@ describe('tool-call guards', () => {
     expect(await step()).toBe(4);
   });
 
+  it('proposes the meal only in a turn that gave no new step (eval P9: the last step and the card at once)', async () => {
+    await stockKitchen(kitchen, { egg: 6, tomato: 4, 'olive oil': 100, scallion: 2 });
+    agent.model.push(callTools(['start_cooking', { recipe_name: 'tomato egg stir-fry' }]), say('OK.'));
+    await chat(agent, 'cook the stir-fry');
+
+    agent.model.push(callTools(['next_step'], ['propose_consumption']), (req) => {
+      expect(lastToolResults(req).map((r) => r.code ?? r.step_no)).toEqual([2, 'step_not_heard']);
+      return say('OK.');
+    });
+    await chat(agent, 'next');
+
+    agent.model.push(callTools(['propose_consumption']), (req) => {
+      expect(lastToolResults(req)[0]).toMatchObject({ kind: 'consume' });
+      return say('OK.');
+    });
+    await chat(agent, "I'm done");
+  });
+
   it("says the user chose an undo's scope only when their words say which, whatever the model claims (eval P16)", async () => {
     // A corrected meal: "undo that" could mean the correction or the whole meal (PRD FR-21).
     await stockKitchen(kitchen, { egg: 6, tomato: 4, 'olive oil': 100, scallion: 2 });

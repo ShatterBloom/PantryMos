@@ -111,6 +111,10 @@ export async function runTurn(deps: TurnDeps, lease: ConversationLease, trigger:
         // In the eval Nova answered one "next" with six next_step calls, skipping to the end.
         return toolError('one_step_per_next', 'The user asked for one step per "next". Let them hear this step first.');
       }
+      if (call.name === 'propose_consumption' && (await stepDelivered(deps.pool, conversationId, owner))) {
+        // In the eval Nova moved on to the last step and proposed the meal in the same turn (P9).
+        return toolError('step_not_heard', 'This turn gave the user a new step to cook. Let them hear it; propose the meal when they say "next" or that they are done.');
+      }
       if (isLocalTool(call.name)) {
         const name = call.name;
         return lease.write((tx) => runLocalTool(tx, conversationId, name, call.final_input, call.request_id));
@@ -383,6 +387,14 @@ export function nextsSaid(text: string): number {
 async function stepsTaken(pool: Pool, conversationId: string, owner: TurnOwner, toolUseId: string): Promise<number> {
   const calls = await callsOfTurn(pool, conversationId, owner);
   return calls.filter((c) => c.tool_use_id !== toolUseId && c.name === 'next_step' && c.result !== null && !c.result.isError).length;
+}
+
+/** Whether this turn delivered a step still to cook, through start_cooking or next_step. */
+async function stepDelivered(pool: Pool, conversationId: string, owner: TurnOwner): Promise<boolean> {
+  const calls = await callsOfTurn(pool, conversationId, owner);
+  return calls.some(
+    (c) => (c.name === 'start_cooking' || c.name === 'next_step') && c.result !== null && !c.result.isError && c.result.data.done !== true,
+  );
 }
 
 /** Whether `text` names `item`, as a word, singular or plural ("the onions" names "onion"). */
