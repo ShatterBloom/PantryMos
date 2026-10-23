@@ -230,23 +230,31 @@ const EXPIRY = /\bexpir(?:e|es|ed|ing|y|ation)\b/i;
 
 /**
  * Date honesty (story B3, PRD FR-7): an item whose batches have no package date has only an
- * estimated priority date, which Mos must never call an expiry. `estimated` are those items' names;
- * a sentence that names one and talks of expiring fails. A deterministic part of the reply check.
+ * estimated priority date, which Mos must never call an expiry. `items` are the kitchen's items,
+ * `estimated` true for those. Each "expires" is blamed on the item named last before it in its
+ * clause ("creamy spinach pasta … the spinach that expires" blames the spinach, eval G1). A
+ * deterministic part of the reply check.
  */
-export function checkDateWords(replies: readonly string[], estimated: readonly string[]): CheckResult {
+export function checkDateWords(replies: readonly string[], items: ReadonlyArray<{ name: string; estimated: boolean }>): CheckResult {
   const notes: string[] = [];
   replies.forEach((reply, i) => {
     for (const sentence of reply.split(/(?<=[.!?])\s+/)) {
       // Clause by clause, so "the milk expires Oct 24, and the spinach is fine" blames only the milk.
       // A pronoun ("it expires") is not followed back: the check misses some, it does not invent.
-      const named = new Set<string>();
+      const blamed = new Set<string>();
       for (const clause of sentence.split(/[,;:]|\band\b|\bbut\b/i)) {
-        if (!EXPIRY.test(clause)) continue;
+        const words = clause.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+        const at = words.findIndex((w) => EXPIRY.test(w));
+        if (at < 0) continue;
         // One- and two-word names: "spinach", "garlic cloves".
-        const words = clause.toLowerCase().split(/[^a-z]+/);
-        for (const item of estimated) if (words.some((w, j) => sameItem(w, item) || sameItem(`${w} ${words[j + 1] ?? ''}`, item))) named.add(item);
+        let last: { name: string; estimated: boolean } | undefined;
+        for (let j = 0; j < at; j++) {
+          const named = items.find((it) => sameItem(words[j]!, it.name) || sameItem(`${words[j]} ${words[j + 1] ?? ''}`, it.name));
+          if (named) last = named;
+        }
+        if (last?.estimated) blamed.add(last.name);
       }
-      for (const item of named) notes.push(`reply ${i}: calls the estimated date of ${item} an expiry: "${sentence}"`);
+      for (const item of blamed) notes.push(`reply ${i}: calls the estimated date of ${item} an expiry: "${sentence}"`);
     }
   });
   return result(notes);

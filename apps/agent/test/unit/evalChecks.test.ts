@@ -172,14 +172,32 @@ describe('checkDateWords', () => {
       'The milk expires on Oct 24, and the garlic cloves are fine.',
       'The garlic cloves expire soon.',
     ];
-    expect(checkDateWords(replies, ['spinach', 'garlic clove'])).toEqual({
+    const items = [
+      { name: 'spinach', estimated: true },
+      { name: 'garlic clove', estimated: true },
+      { name: 'milk', estimated: false },
+    ];
+    expect(checkDateWords(replies, items)).toEqual({
       verdict: 'fail',
       notes: [
         'reply 0: calls the estimated date of spinach an expiry: "Your spinach expires tomorrow."',
         'reply 2: calls the estimated date of garlic clove an expiry: "The garlic cloves expire soon."',
       ],
     });
-    expect(checkDateWords(['Spinach, stored for 4 days, should be used first.'], ['spinach']).verdict).toBe('pass');
+    expect(checkDateWords(['Spinach, stored for 4 days, should be used first.'], items).verdict).toBe('pass');
+  });
+
+  it('blames an expiry on the item named last before it (eval G1)', () => {
+    // The pasta is estimated, the spinach from its package: "spinach pasta" names the dish.
+    const items = [
+      { name: 'pasta', estimated: true },
+      { name: 'spinach', estimated: false },
+    ];
+    const said = "I'm making creamy spinach pasta for three people using the spinach that expires on October 23.";
+    expect(checkDateWords([said], items).verdict).toBe('pass');
+    expect(checkDateWords(['The spinach is fine but the pasta expires soon.'], items).notes).toEqual([
+      'reply 0: calls the estimated date of pasta an expiry: "The spinach is fine but the pasta expires soon."',
+    ]);
   });
 
   it('combines with another check, keeping the worse verdict', () => {

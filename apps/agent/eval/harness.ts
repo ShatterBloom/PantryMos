@@ -294,7 +294,7 @@ export async function runCase(servers: RunningServers, model: ModelClient, extra
   } catch (err) {
     reply = { verdict: 'unverified', notes: [`claim extractor failed: ${(err as Error).message}`] };
   }
-  reply = withFindings(bothChecks(reply, checkDateWords(replies, await estimatedItems(kitchen.householdId))), ctx.findings.reply);
+  reply = withFindings(bothChecks(reply, checkDateWords(replies, await kitchenItems(kitchen.householdId))), ctx.findings.reply);
 
   return {
     id: c.id,
@@ -322,15 +322,17 @@ export async function runCase(servers: RunningServers, model: ModelClient, extra
   };
 }
 
-/** Items whose batches all lack a package date: their dates are estimates, never expiries. */
-async function estimatedItems(householdId: string): Promise<string[]> {
+/** The kitchen's items; `estimated` when no batch has a package date, so no date of it is an expiry. */
+async function kitchenItems(householdId: string): Promise<Array<{ name: string; estimated: boolean }>> {
   return withAdmin(async (admin) => {
-    const { rows } = await admin.query<{ name: string }>(
-      `SELECT i.name FROM pantry.items i JOIN pantry.batches b ON b.item_id = i.id
-        WHERE i.household_id = $1 GROUP BY i.name HAVING bool_and(b.package_date IS NULL)`,
+    const { rows } = await admin.query<{ name: string; estimated: boolean | null }>(
+      `SELECT i.name, bool_and(b.package_date IS NULL) AS estimated
+         FROM pantry.items i LEFT JOIN pantry.batches b ON b.item_id = i.id
+        WHERE i.household_id = $1 GROUP BY i.name`,
       [householdId],
     );
-    return rows.map((r) => r.name);
+    // An item never bought has no batch, and no date to call anything.
+    return rows.map((r) => ({ name: r.name, estimated: r.estimated === true }));
   });
 }
 
