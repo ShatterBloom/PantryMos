@@ -11,7 +11,7 @@ import { type Card, CONFIRM_PROMPT } from '../domain/card.ts';
 import { PantryError } from '../domain/errors.ts';
 import { MAX_QUANTITY } from '../domain/intake.ts';
 import { type BaseUnit, findItem } from '../domain/items.ts';
-import { resolveRecipe } from '../domain/recipes.ts';
+import { recipesWithWords, resolveRecipe } from '../domain/recipes.ts';
 import { type RevisionLine, revisionLines } from '../domain/revision.ts';
 import { formatNumber, listAnd, speakQuantity } from '../domain/speech.ts';
 import { NameInput } from '../mcp/schemas.ts';
@@ -84,7 +84,16 @@ export async function proposeRevision(
 async function resolveMeal(q: Queryable, householdId: string, recipeName: string | undefined): Promise<string> {
   let meals = await recentMeals(q, householdId);
   if (recipeName !== undefined) {
-    const recipe = resolveRecipe(recipeName, await loadRecipes(q, householdId));
+    const recipes = await loadRecipes(q, householdId);
+    let recipe: { id: string };
+    try {
+      recipe = resolveRecipe(recipeName, recipes);
+    } catch (err) {
+      // A short name ("the stir-fry") still picks out one of the recent meals.
+      const recent = recipesWithWords(recipeName, recipes).filter((r) => meals.some((m) => m.recipe_id === r.id));
+      if (!(err instanceof PantryError && err.code === 'unknown_recipe') || recent.length !== 1) throw err;
+      recipe = recent[0]!;
+    }
     meals = meals.filter((m) => m.recipe_id === recipe.id);
   }
   if (meals.length === 0) {

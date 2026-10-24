@@ -58,6 +58,16 @@ export function resolveRecipe<R extends RecipeRef>(spoken: string, recipes: read
   });
 }
 
+/** The recipes with a name or alias that holds every spoken word: "stir-fry" → tomato egg stir-fry. */
+export function recipesWithWords<R extends RecipeRef>(spoken: string, recipes: readonly R[]): R[] {
+  const words = normalizeName(spoken).replace(/^the /, '').split(' ').map(singular);
+  const holds = (name: string) => {
+    const have = normalizeName(name).split(' ').map(singular);
+    return words.every((w) => have.includes(w));
+  };
+  return recipes.filter((r) => [r.name, ...r.aliases].some(holds));
+}
+
 /**
  * Scales a base-unit quantity from the recipe's servings to `servings`.
  * Counted items round to the nearest half (never below one half, so "½ onion" works);

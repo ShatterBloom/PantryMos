@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { CATALOG } from '../../../../db/seed/catalog.ts';
 import { RECIPES } from '../../../../db/seed/recipes.ts';
 import type { PantryError } from '../../src/domain/errors.ts';
-import { type RecipeRef, resolveRecipe, scaleQuantity } from '../../src/domain/recipes.ts';
+import { type RecipeRef, recipesWithWords, resolveRecipe, scaleQuantity } from '../../src/domain/recipes.ts';
 
 const recipe = (name: string, aliases: string[] = []): RecipeRef => ({ id: name, name, aliases, servings: 2 });
 const recipes = [
@@ -52,6 +52,17 @@ describe('resolveRecipe', () => {
       options: ['creamy spinach pasta', 'tomato egg stir-fry', 'spinach omelette', 'spinach soup'],
     });
     expect(failure('anything', []).ask).toBe('There are no recipes yet.');
+  });
+});
+
+describe('recipesWithWords', () => {
+  it('finds the recipes whose name or alias holds every spoken word', () => {
+    const names = (spoken: string) => recipesWithWords(spoken, recipes).map((r) => r.name);
+    expect(names('the stir-fry')).toEqual(['tomato egg stir-fry']);
+    expect(names('Eggs Stir-Fry')).toEqual(['tomato egg stir-fry']);
+    expect(names('spinach')).toEqual(['creamy spinach pasta', 'spinach omelette', 'spinach soup']);
+    expect(names('soup')).toEqual(['spinach soup']);
+    expect(names('beef stir-fry')).toEqual([]);
   });
 });
 

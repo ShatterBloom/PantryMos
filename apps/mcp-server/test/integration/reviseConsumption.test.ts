@@ -145,6 +145,9 @@ describe('propose_consumption_revision', () => {
 
       expect((await ok({ usage: [{ item: 'egg', quantity: 1 }], recipe_name: 'tomato and egg stir-fry' })).session_id).toBe(stir.sessionId);
       expect((await ok({ usage: [{ item: 'egg', quantity: 1 }], session_id: omelette.sessionId })).session_id).toBe(omelette.sessionId);
+      // A short name that is no recipe's name still picks out the one recent meal it fits.
+      expect((await ok({ usage: [{ item: 'egg', quantity: 1 }], recipe_name: 'the stir-fry' })).session_id).toBe(stir.sessionId);
+      expect((await ok({ usage: [{ item: 'egg', quantity: 1 }], recipe_name: 'spinach' })).session_id).toBe(omelette.sessionId);
     });
 
     it('finds no meal when none was recorded in the last 24 hours, or none of that recipe', async () => {
@@ -155,6 +158,9 @@ describe('propose_consumption_revision', () => {
         message: 'No potato soup was recorded in the last 24 hours.',
       });
       expect(parseErrorResult(await revise({ usage: [{ item: 'egg', quantity: 1 }], recipe_name: 'lasagne' }))?.code).toBe('unknown_recipe');
+      // A short name only stands for a meal that was recorded.
+      expect(parseErrorResult(await revise({ usage: [{ item: 'egg', quantity: 1 }], recipe_name: 'soup' }))?.code).toBe('unknown_recipe');
+      expect((await ok({ usage: [{ item: 'egg', quantity: 4 }], recipe_name: 'stir-fry' })).session_id).toBe(sessionId);
 
       await withAdmin((admin) =>
         admin.query(`UPDATE pantry.cooking_sessions SET consumed_at = now() - interval '25 hours' WHERE id = $1`, [sessionId]),
