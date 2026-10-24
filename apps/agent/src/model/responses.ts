@@ -225,6 +225,9 @@ export class ChatGPTPlanModel implements ModelClient {
 
     const cap = this.options.maxTokens * 4;
     let streamed = 0;
+    // ChatGPT's backend sends each finished item on its own and leaves the completed response's
+    // output empty (store: false); the API may send both.
+    const items: OutputItem[] = [];
     try {
       for await (const event of events(response.body)) {
         switch (event.type) {
@@ -234,9 +237,12 @@ export class ChatGPTPlanModel implements ModelClient {
             // Nothing meant to be said aloud runs this long (the other adapters' token cap).
             if (streamed > cap) return { stopReason: 'max_tokens', content: [] };
             break;
+          case 'response.output_item.done':
+            if (event.item) items.push(event.item as OutputItem);
+            break;
           case 'response.completed': {
             const done = event.response as { output?: OutputItem[]; usage?: { input_tokens?: number; output_tokens?: number } } | undefined;
-            return fromResponsesOutput(done?.output ?? [], done?.usage);
+            return fromResponsesOutput(done?.output?.length ? done.output : items, done?.usage);
           }
           case 'response.incomplete':
             // Cut off by the server: dropped, as a reply cut off by a token cap is.

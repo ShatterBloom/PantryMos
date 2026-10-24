@@ -126,6 +126,22 @@ describe('ChatGPTPlanModel', () => {
     ).rejects.toMatchObject({ reason: 'not_eligible' });
   });
 
+  it('reads the items streamed one by one when the completed response leaves its output empty', async () => {
+    // What ChatGPT's backend sends with store: false (seen on a real plan).
+    const call = { type: 'function_call', call_id: 'call_1', name: 'list_inventory', arguments: '{}', status: 'completed' };
+    const f = fakeFetch(() =>
+      sse([
+        { type: 'response.output_item.added', item: { ...call, arguments: '' } },
+        { type: 'response.function_call_arguments.delta', delta: '{}' },
+        { type: 'response.output_item.done', output_index: 0, item: call },
+        completed([]),
+      ]),
+    );
+    expect((await new ChatGPTPlanModel(OPTIONS, tokens, f.impl).converse(REQUEST)).content).toEqual([
+      { toolUse: { toolUseId: 'call_1', name: 'list_inventory', input: {} } },
+    ]);
+  });
+
   it('stops a reply that streams past the cap, and drops one the server marks incomplete', async () => {
     const long = fakeFetch(() => sse(Array.from({ length: 50 }, () => ({ type: 'response.output_text.delta', delta: 'Okay, the user wants ' }))));
     expect(await new ChatGPTPlanModel(OPTIONS, tokens, long.impl).converse(REQUEST)).toEqual({ stopReason: 'max_tokens', content: [] });

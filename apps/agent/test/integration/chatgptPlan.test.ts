@@ -132,7 +132,11 @@ class FakeOpenAI {
   }
 }
 
-const completed = (output: unknown[]) => [{ type: 'response.completed', response: { output, usage: { input_tokens: 5, output_tokens: 1 } } }];
+// As ChatGPT's backend streams it: each item on its own, the completed response's output empty.
+const completed = (output: unknown[]) => [
+  ...output.map((item, i) => ({ type: 'response.output_item.done', output_index: i, item })),
+  { type: 'response.completed', response: { output: [], usage: { input_tokens: 5, output_tokens: 1 } } },
+];
 const text = (t: string) => completed([{ type: 'message', content: [{ type: 'output_text', text: t }] }]);
 
 describe('a ChatGPT plan through Sign in with ChatGPT', () => {
