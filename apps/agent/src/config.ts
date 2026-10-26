@@ -23,7 +23,7 @@ const OpenAISchema = z.object({
   baseUrl: z.url().default('https://api.openai.com/v1'),
   /** Local servers usually need none. */
   apiKey: z.string().min(1).optional(),
-  model: z.string({ error: 'OPENAI_MODEL is required when MODEL_PROVIDER=openai' }).min(1),
+  model: z.string({ error: 'OPENAI_MODEL is required when MODEL_PROVIDERS includes openai' }).min(1),
   maxTokens: z.coerce.number().int().min(64).max(4096).default(1024),
   timeoutMs: z.coerce.number().int().positive().default(60_000),
 });
@@ -37,7 +37,7 @@ export const CHATGPT_CALLBACK_PATH = '/auth/chatgpt/callback';
 const ChatGPTSchema = z.object({
   /** Encrypts the plan's tokens in the agent's database (see chatgpt/sealing.ts). */
   tokenKey: z
-    .string({ error: 'CHATGPT_TOKEN_KEY is required when MODEL_PROVIDER=chatgpt' })
+    .string({ error: 'CHATGPT_TOKEN_KEY is required when MODEL_PROVIDERS includes chatgpt' })
     .min(32, 'CHATGPT_TOKEN_KEY must be at least 32 characters'),
   /** Unset: the plan's default, the first model in its catalog. */
   model: z.string().min(1).optional(),
@@ -53,12 +53,20 @@ const ChatGPTSchema = z.object({
   timeoutMs: z.coerce.number().int().positive().default(120_000),
 });
 
-/** The model the agent talks to. Bedrock is the one the prompt and guardrails were tuned and evaluated on. */
+export const PROVIDERS = ['bedrock', 'openai', 'chatgpt'] as const;
+export type Provider = (typeof PROVIDERS)[number];
+
+/** One model the agent can talk to. Bedrock is the one the prompt and guardrails were first tuned on. */
 const ModelSchema = z.discriminatedUnion('provider', [
   BedrockSchema.extend({ provider: z.literal('bedrock') }),
   OpenAISchema.extend({ provider: z.literal('openai') }),
   ChatGPTSchema.extend({ provider: z.literal('chatgpt') }),
 ]);
+
+export type ModelConfig = z.infer<typeof ModelSchema>;
+
+/** The models the app offers, from MODEL_PROVIDERS; the user chooses one of them in the app. */
+const ModelsSchema = z.array(ModelSchema).min(1, `MODEL_PROVIDERS must name at least one of ${PROVIDERS.join(', ')}`);
 
 const ConfigSchema = z.object({
   databaseUrl: z.string().min(1),
@@ -93,7 +101,7 @@ const ConfigSchema = z.object({
       .transform((v) => v === 'true'),
     ttlSeconds: z.coerce.number().int().positive().default(12 * 3600),
   }),
-  model: ModelSchema,
+  models: ModelsSchema,
 });
 
 export type AgentConfig = z.infer<typeof ConfigSchema>;
@@ -119,12 +127,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
       secureCookie: env.AGENT_SECURE_COOKIE,
       ttlSeconds: env.AGENT_SESSION_TTL_SECONDS,
     },
-    model: modelEnv(env),
+    models: modelsEnv(env),
   });
 }
 
-const modelEnv = (env: NodeJS.ProcessEnv) => {
-  const provider = env.MODEL_PROVIDER || 'bedrock';
+const modelsEnv = (env: NodeJS.ProcessEnv) => {
+  const providers = csv(env.MODEL_PROVIDERS ?? '') as string[];
+  return [...new Set(providers)].map((provider) => modelEnv(env, provider));
+};
+
+const modelEnv = (env: NodeJS.ProcessEnv, provider: string) => {
   if (provider === 'openai') {
     return {
       provider,
@@ -159,9 +171,9 @@ const bedrockEnv = (env: NodeJS.ProcessEnv) => ({
   maxTokens: env.BEDROCK_MAX_TOKENS,
 });
 
-/** The model settings alone, from the same variables, for tools that only talk to the model (the eval). */
-export function loadModelConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig['model'] {
-  return ModelSchema.parse(modelEnv(env));
+/** One provider's settings alone, from the same variables, for tools that only talk to the model (the eval). */
+export function loadModelConfig(provider: string, env: NodeJS.ProcessEnv = process.env): ModelConfig {
+  return ModelSchema.parse(modelEnv(env, provider));
 }
 
 /** Bedrock's settings alone, for the eval's claim extractor, which always runs on Bedrock. */

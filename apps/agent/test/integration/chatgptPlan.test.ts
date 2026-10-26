@@ -9,7 +9,7 @@ import { TEST_AGENT_DB_URL } from '../../../../test/env.ts';
 import { createDemoKitchen, type DemoKitchen, mcpTestConfig, stockKitchen } from '../../../../test/fixtures.ts';
 import { ChatGPTAccount } from '../../src/chatgpt/account.ts';
 import { TokenSealer } from '../../src/chatgpt/sealing.ts';
-import type { AgentConfig } from '../../src/config.ts';
+import type { ModelConfig } from '../../src/config.ts';
 import { createPool, type Pool } from '../../src/db.ts';
 import { ChatGPTPlanModel } from '../../src/model/responses.ts';
 import { chat, lastMessage, startAgentWith, type TestAgent } from '../fixtures.ts';
@@ -163,13 +163,13 @@ describe('a ChatGPT plan through Sign in with ChatGPT', () => {
     fake.seen.length = 0;
     kitchen = await createDemoKitchen();
     const settings = { tokenKey: TOKEN_KEY, callbackUrl: CALLBACK, authUrl: fake.base, apiUrl: `${fake.base}/v1`, maxTokens: 1024, timeoutMs: 5000 };
-    const model: AgentConfig['model'] = { provider: 'chatgpt', ...settings, returnUrl: RETURN };
+    const model: ModelConfig = { provider: 'chatgpt', ...settings, returnUrl: RETURN };
     pool = createPool(TEST_AGENT_DB_URL);
     await pool.query('DELETE FROM agent.chatgpt_session');
     await pool.query('DELETE FROM agent.chatgpt_sign_ins');
     await pool.query('DELETE FROM agent.chatgpt_registration');
     account = new ChatGPTAccount(pool, settings);
-    agent = await startAgentWith(new ChatGPTPlanModel({ ...settings, retryDelaysMs: [1] }, account), servers, kitchen, { config: { model }, chatgpt: account });
+    agent = await startAgentWith(new ChatGPTPlanModel({ ...settings, retryDelaysMs: [1] }, account), servers, kitchen, { config: { models: [model] }, chatgpt: account });
   });
   afterEach(async () => {
     await agent.close();
@@ -198,7 +198,7 @@ describe('a ChatGPT plan through Sign in with ChatGPT', () => {
   const status = async () => (await agent.api({ method: 'GET', url: '/api/model' })).json();
 
   it('signs in: dynamic registration, PKCE, a checked ID token, and the plan default model', async () => {
-    expect(await status()).toEqual({ provider: 'chatgpt', chatgpt: { signed_in: false, email: null, model: null, welcomed: false } });
+    expect(await status()).toMatchObject({ current: 'chatgpt', chatgpt: { signed_in: false, email: null, model: null, welcomed: false } });
     const url = await startSignIn();
     expect(`${url.origin}${url.pathname}`).toBe(`${fake.base}/api/accounts/authorize`);
     expect(Object.fromEntries(url.searchParams)).toMatchObject({
@@ -213,7 +213,7 @@ describe('a ChatGPT plan through Sign in with ChatGPT', () => {
     expect(url.searchParams.get('ext_agent_host_id')).toMatch(/^urn:uuid:[0-9a-f-]{36}$/);
 
     expect(await callback({ code: 'code-1', state: url.searchParams.get('state')!, client_id: fake.issuedClient, scope: PLAN })).toBe('signed_in');
-    expect(await status()).toEqual({ provider: 'chatgpt', chatgpt: { signed_in: true, email: 'cook@example.com', model: 'gpt-plan-1', welcomed: false } });
+    expect(await status()).toMatchObject({ current: 'chatgpt', chatgpt: { signed_in: true, email: 'cook@example.com', model: 'gpt-plan-1', welcomed: false } });
 
     // The welcome notice, once per host.
     expect((await agent.api({ method: 'POST', url: '/api/model/chatgpt/welcomed' })).statusCode).toBe(204);
@@ -350,12 +350,12 @@ describe('a ChatGPT plan through Sign in with ChatGPT', () => {
     expect((await agent.api({ method: 'POST', url: '/api/model/chatgpt/sign-out' })).json()).toEqual({ revoked: true });
   });
 
-  it('keeps the sign-in routes off for other providers, and the callback outside the session check', async () => {
+  it('keeps the sign-in routes off without a ChatGPT plan configured, and the callback outside the session check', async () => {
     const res = await agent.app.inject({ method: 'GET', url: '/auth/chatgpt/callback?state=x' });
     expect(res.statusCode).toBe(303);
     const other = await startAgentWith(agent.model, servers, kitchen);
     try {
-      expect((await other.api({ method: 'GET', url: '/api/model' })).json()).toEqual({ provider: 'bedrock', chatgpt: null });
+      expect((await other.api({ method: 'GET', url: '/api/model' })).json()).toMatchObject({ current: 'bedrock', chatgpt: null });
       expect((await other.api({ method: 'POST', url: '/api/model/chatgpt/sign-in' })).statusCode).toBe(404);
     } finally {
       await other.close();

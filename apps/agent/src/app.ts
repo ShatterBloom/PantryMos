@@ -8,6 +8,8 @@ import type { AgentConfig } from './config.ts';
 import type { Pool } from './db.ts';
 import { InternalClient } from './internalClient.ts';
 import { connectMcp } from './mcpClient.ts';
+import { ModelChoice } from './model/choice.ts';
+import { modelId } from './model/create.ts';
 import type { ModelClient } from './model/types.ts';
 import { registerRoutes } from './routes.ts';
 import type { LeaseTiming } from './store/lease.ts';
@@ -22,8 +24,11 @@ export interface HealthReport {
 }
 
 export interface AgentOptions {
+  /** The model turns run on: in the agent, the chosen one (ChosenModel over `choice`). */
   model: ModelClient;
-  /** The ChatGPT sign-in the model runs on, when it runs on a ChatGPT plan. */
+  /** Which configured model is chosen; defaults to one over the configured providers. */
+  choice?: ModelChoice;
+  /** The ChatGPT sign-in, when a ChatGPT plan is one of the models. */
   chatgpt?: ChatGPTAccount | null;
   /** How turns reach the MCP server; defaults to the configured URL and token. */
   connectMcp?: TurnDeps['connectMcp'];
@@ -109,10 +114,12 @@ export async function buildAgentApp(config: AgentConfig, pool: Pool, options: Ag
     return reply.code(report.ok ? 200 : 503).send(report);
   });
 
+  const chatgptConfig = config.models.find((m) => m.provider === 'chatgpt');
   registerModelRoutes(app, {
-    provider: config.model.provider,
+    choice: options.choice ?? new ModelChoice(pool, config.models.map((m) => m.provider)),
+    modelIds: new Map(config.models.map((m) => [m.provider, modelId(m)])),
     account: options.chatgpt ?? null,
-    returnUrl: (config.model.provider === 'chatgpt' && config.model.returnUrl) || `${config.appOrigins[0]}/`,
+    returnUrl: chatgptConfig?.returnUrl || `${config.appOrigins[0]}/`,
   });
 
   registerRoutes(app, {

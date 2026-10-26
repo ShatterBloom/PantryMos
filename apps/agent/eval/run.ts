@@ -1,6 +1,7 @@
-// `pnpm eval [--only P1,G1] [--repeat 3]`: runs the eval cases against real Bedrock (§9.4, §9.6, §9.9)
-// and writes docs/eval-log.md, plus every exchange to apps/agent/eval/out/ for debugging.
-// MODEL_PROVIDER and its settings pick the model under test, as for the agent; EVAL_EXTRACTOR_MODEL_ID pins the
+// `pnpm eval --provider bedrock|openai|chatgpt [--only P1,G1] [--repeat 3]`: runs the eval cases against
+// a real model (§9.4, §9.6, §9.9) and writes docs/eval-log.md, plus every exchange to apps/agent/eval/out/
+// for debugging. --provider picks the model under test, configured by the same variables as for the
+// agent; EVAL_EXTRACTOR_MODEL_ID pins the
 // reply-check extractor (default: the same model), so two models can be compared by one judge.
 // It recreates the throwaway test database, so it must not run alongside the test suite.
 import { execFileSync } from 'node:child_process';
@@ -19,6 +20,7 @@ import { renderReport } from './report.ts';
 
 const { values } = parseArgs({
   options: {
+    provider: { type: 'string' },
     only: { type: 'string' },
     repeat: { type: 'string', default: '1' },
   },
@@ -29,8 +31,9 @@ if (!Number.isInteger(repeat) || repeat < 1) throw new Error('--repeat must be a
 const cases = CASES.filter((c) => !only || only.includes(c.id.toUpperCase()));
 if (cases.length === 0) throw new Error(`No case matches --only ${values.only}`);
 
-// The model under test follows MODEL_PROVIDER; the claim extractor always runs on Bedrock.
-const modelConfig = loadModelConfig();
+// The model under test follows --provider; the claim extractor always runs on Bedrock.
+if (!values.provider) throw new Error('--provider is required: bedrock, openai or chatgpt');
+const modelConfig = loadModelConfig(values.provider);
 const bedrock = loadBedrockConfig();
 const startedAt = new Date();
 const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();

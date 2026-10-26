@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../../src/config.ts';
+import { loadConfig, loadModelConfig } from '../../src/config.ts';
 
 const REQUIRED = {
   AGENT_DATABASE_URL: 'postgres://u:p@127.0.0.1:5432/db',
@@ -9,7 +9,9 @@ const REQUIRED = {
   SERVICE_TOKEN: 'service-token-0123456789',
   AGENT_HOUSEHOLD_ID: '00000000-0000-4000-8000-000000000001',
   AGENT_SESSION_SECRET: 'session-secret-0123456789abcdefghij',
+  MODEL_PROVIDERS: 'bedrock',
 };
+const KEY = 'chatgpt-token-key-for-tests-0123456789';
 
 describe('agent loadConfig', () => {
   it('applies the documented defaults', () => {
@@ -27,7 +29,7 @@ describe('agent loadConfig', () => {
       appOrigins: ['http://localhost:7400', 'http://127.0.0.1:7400'],
       chatRatePerMinute: 30,
       session: { secret: REQUIRED.AGENT_SESSION_SECRET, secureCookie: false, ttlSeconds: 43_200 },
-      model: { provider: 'bedrock', region: 'ap-southeast-2', modelId: 'global.amazon.nova-2-lite-v1:0', maxTokens: 1024 },
+      models: [{ provider: 'bedrock', region: 'ap-southeast-2', modelId: 'global.amazon.nova-2-lite-v1:0', maxTokens: 1024 }],
     });
   });
 
@@ -48,13 +50,29 @@ describe('agent loadConfig', () => {
       port: 9000,
       bodyLimitBytes: 2048,
       appOrigins: ['http://localhost:5173', 'http://localhost:7400'],
-      model: { provider: 'bedrock', region: 'us-east-1', modelId: 'amazon.nova-lite-v1:0', maxTokens: 512 },
+      models: [{ provider: 'bedrock', region: 'us-east-1', modelId: 'amazon.nova-lite-v1:0', maxTokens: 512 }],
     });
-    expect(loadConfig({ ...REQUIRED, AWS_REGION: 'us-east-1', BEDROCK_REGION: 'us-west-2' }).model).toMatchObject({ region: 'us-west-2' });
+    expect(loadConfig({ ...REQUIRED, AWS_REGION: 'us-east-1', BEDROCK_REGION: 'us-west-2' }).models[0]).toMatchObject({ region: 'us-west-2' });
   });
 
-  it('selects an OpenAI-compatible model with MODEL_PROVIDER=openai', () => {
-    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'openai', OPENAI_MODEL: 'gpt-4.1-mini', OPENAI_API_KEY: 'sk-test' }).model).toEqual({
+  it('offers every provider MODEL_PROVIDERS names, and needs at least one', () => {
+    const all = loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'chatgpt, openai,bedrock,openai', OPENAI_MODEL: 'gpt-4.1-mini', CHATGPT_TOKEN_KEY: KEY });
+    expect(all.models.map((m) => m.provider)).toEqual(['chatgpt', 'openai', 'bedrock']);
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: undefined })).toThrow(/MODEL_PROVIDERS must name at least one/);
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: ' , ' })).toThrow(/MODEL_PROVIDERS must name at least one/);
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'bedrock,gemini' })).toThrow();
+    // Each one named is checked in full, not only the one in use.
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'bedrock,openai' })).toThrow(/OPENAI_MODEL is required when MODEL_PROVIDERS includes openai/);
+  });
+
+  it('loads one provider alone for the eval', () => {
+    expect(loadModelConfig('openai', { OPENAI_MODEL: 'gpt-4.1-mini' })).toMatchObject({ provider: 'openai', model: 'gpt-4.1-mini' });
+    expect(loadModelConfig('bedrock', {})).toMatchObject({ provider: 'bedrock', modelId: 'global.amazon.nova-2-lite-v1:0' });
+    expect(() => loadModelConfig('gemini', {})).toThrow();
+  });
+
+  it('configures an OpenAI-compatible model with MODEL_PROVIDERS=openai', () => {
+    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'openai', OPENAI_MODEL: 'gpt-4.1-mini', OPENAI_API_KEY: 'sk-test' }).models[0]).toEqual({
       provider: 'openai',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
@@ -64,15 +82,14 @@ describe('agent loadConfig', () => {
     });
     // A local server: its own URL, no key (compose passes an empty one).
     expect(
-      loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'openai', OPENAI_BASE_URL: 'http://127.0.0.1:11434/v1', OPENAI_MODEL: 'qwen3:8b', OPENAI_API_KEY: '', OPENAI_MAX_TOKENS: '2048' }).model,
+      loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'openai', OPENAI_BASE_URL: 'http://127.0.0.1:11434/v1', OPENAI_MODEL: 'qwen3:8b', OPENAI_API_KEY: '', OPENAI_MAX_TOKENS: '2048' }).models[0],
     ).toEqual({ provider: 'openai', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', maxTokens: 2048, timeoutMs: 60_000 });
-    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'openai' })).toThrow(/OPENAI_MODEL/);
-    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'gemini' })).toThrow();
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'openai' })).toThrow(/OPENAI_MODEL/);
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'gemini' })).toThrow();
   });
 
-  it('selects a ChatGPT plan with MODEL_PROVIDER=chatgpt, its callback on the agent port', () => {
-    const KEY = 'chatgpt-token-key-for-tests-0123456789';
-    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt', CHATGPT_TOKEN_KEY: KEY }).model).toEqual({
+  it('configures a ChatGPT plan with MODEL_PROVIDERS=chatgpt, its callback on the agent port', () => {
+    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'chatgpt', CHATGPT_TOKEN_KEY: KEY }).models[0]).toEqual({
       provider: 'chatgpt',
       tokenKey: KEY,
       callbackUrl: 'http://127.0.0.1:7400/auth/chatgpt/callback',
@@ -82,14 +99,14 @@ describe('agent loadConfig', () => {
       timeoutMs: 120_000,
     });
     // Only the port can change: the agent's, or the published one when docker maps it elsewhere.
-    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt', CHATGPT_TOKEN_KEY: KEY, AGENT_PORT: '9000' }).model).toMatchObject({ callbackUrl: 'http://127.0.0.1:9000/auth/chatgpt/callback' });
+    expect(loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'chatgpt', CHATGPT_TOKEN_KEY: KEY, AGENT_PORT: '9000' }).models[0]).toMatchObject({ callbackUrl: 'http://127.0.0.1:9000/auth/chatgpt/callback' });
     expect(
-      loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt', CHATGPT_TOKEN_KEY: KEY, AGENT_PORT: '7400', CHATGPT_CALLBACK_PORT: '8400', CHATGPT_MODEL: 'gpt-x', CHATGPT_RETURN_URL: 'http://localhost:5173/' }).model,
+      loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'chatgpt', CHATGPT_TOKEN_KEY: KEY, AGENT_PORT: '7400', CHATGPT_CALLBACK_PORT: '8400', CHATGPT_MODEL: 'gpt-x', CHATGPT_RETURN_URL: 'http://localhost:5173/' }).models[0],
     ).toMatchObject({ callbackUrl: 'http://127.0.0.1:8400/auth/chatgpt/callback', model: 'gpt-x', returnUrl: 'http://localhost:5173/' });
-    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt', CHATGPT_TOKEN_KEY: KEY, CHATGPT_CALLBACK_PORT: 'x' })).toThrow();
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'chatgpt', CHATGPT_TOKEN_KEY: KEY, CHATGPT_CALLBACK_PORT: 'x' })).toThrow();
     // The tokens are encrypted under a key of its own.
-    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt' })).toThrow(/CHATGPT_TOKEN_KEY is required/);
-    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDER: 'chatgpt', CHATGPT_TOKEN_KEY: 'short' })).toThrow(/CHATGPT_TOKEN_KEY must be/);
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'chatgpt' })).toThrow(/CHATGPT_TOKEN_KEY is required/);
+    expect(() => loadConfig({ ...REQUIRED, MODEL_PROVIDERS: 'chatgpt', CHATGPT_TOKEN_KEY: 'short' })).toThrow(/CHATGPT_TOKEN_KEY must be/);
   });
 
   it('rejects malformed URLs, short tokens and a missing household', () => {

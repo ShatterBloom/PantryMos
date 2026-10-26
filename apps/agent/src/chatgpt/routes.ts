@@ -1,17 +1,41 @@
-// The app's view of the model, and Sign in with ChatGPT: start, callback, welcome notice, sign-out.
+// The app's view of the models: which are configured, choosing one, and Sign in with ChatGPT
+// (start, callback, welcome notice, sign-out).
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { PROVIDERS, type Provider } from '../config.ts';
+import type { ModelChoice } from '../model/choice.ts';
 import type { ChatGPTAccount } from './account.ts';
 
 export interface ModelRoutesOptions {
-  provider: string;
-  /** Null unless the agent runs on a ChatGPT plan. */
+  choice: ModelChoice;
+  /** Each configured provider's model id as the app shows it (null: a ChatGPT plan's default). */
+  modelIds: ReadonlyMap<Provider, string | null>;
+  /** Null unless a ChatGPT plan is one of the models. */
   account: ChatGPTAccount | null;
   /** Where the browser goes after the callback, with `?chatgpt=<result>`. */
   returnUrl: string;
 }
 
-export function registerModelRoutes(app: FastifyInstance, { provider, account, returnUrl }: ModelRoutesOptions): void {
-  app.get('/api/model', async (_request, reply) => reply.send({ provider, chatgpt: account ? await account.status() : null }));
+const ChoiceBody = z.object({ provider: z.enum(PROVIDERS) });
+
+export function registerModelRoutes(app: FastifyInstance, { choice, modelIds, account, returnUrl }: ModelRoutesOptions): void {
+  // Every provider, so the app can show the ones not set up too.
+  const status = async () => ({
+    current: await choice.current(),
+    models: PROVIDERS.map((provider) => ({ provider, configured: modelIds.has(provider), model: modelIds.get(provider) ?? null })),
+    chatgpt: account ? await account.status() : null,
+  });
+
+  app.get('/api/model', async (_request, reply) => reply.send(await status()));
+
+  app.post('/api/model/choice', async (request, reply) => {
+    const parsed = ChoiceBody.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: 'bad_request', issues: parsed.error.issues });
+    if (!(await choice.choose(parsed.data.provider))) {
+      return reply.code(409).send({ code: 'model_not_configured', message: `${parsed.data.provider} isn't set up in MODEL_PROVIDERS.` });
+    }
+    return reply.send(await status());
+  });
 
   if (!account) return;
 

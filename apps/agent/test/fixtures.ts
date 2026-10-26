@@ -82,7 +82,7 @@ export function agentTestConfig(
     appOrigins: [APP_ORIGIN],
     chatRatePerMinute: 1000,
     session: { secret: TEST_SESSION_SECRET, secureCookie: false, ttlSeconds: 3600 },
-    model: { provider: 'bedrock', region: 'ap-southeast-2', modelId: 'test', maxTokens: 512 },
+    models: [{ provider: 'bedrock', region: 'ap-southeast-2', modelId: 'test', maxTokens: 512 }],
     ...overrides,
   };
 }

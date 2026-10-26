@@ -48,8 +48,11 @@ export const isText = (b: ContentBlock): b is { text: string } => 'text' in b;
 export const isToolUse = (b: ContentBlock): b is { toolUse: ToolUse } => 'toolUse' in b;
 export const isToolResult = (b: ContentBlock): b is { toolResult: ToolResult } => 'toolResult' in b;
 
-/** Why the model can't be reached until someone acts: sign in again, or wait for or raise a plan limit. */
-export type ModelUnavailableReason = 'signed_out' | 'usage_limit' | 'not_eligible';
+/**
+ * Why the model can't be reached until someone acts: choose a model, sign in again, or wait for or
+ * raise a plan limit.
+ */
+export type ModelUnavailableReason = 'not_chosen' | 'signed_out' | 'usage_limit' | 'not_eligible';
 
 /**
  * The model refused for a reason a retry won't fix. The chat answers with it, so the app can say
