@@ -6,11 +6,11 @@ import chatgptLogo from '../assets/chatgpt-logo-white.svg';
 import { MANAGE_USAGE_URL } from '../lib/conversation.ts';
 import type { Plan } from '../lib/plan.ts';
 
-/** The header's plan controls; nothing unless the agent runs on a ChatGPT plan. */
+/** The header's plan controls; nothing unless the chosen model is a ChatGPT plan. */
 export function PlanControls({ plan, onProblem }: { plan: Plan; onProblem: (text: string) => void }) {
   const status = useSyncExternalStore(plan.subscribe, plan.current);
   const [busy, setBusy] = useState(false);
-  const chatgpt = status?.chatgpt;
+  const chatgpt = status?.current === 'chatgpt' ? status.chatgpt : null;
   if (!chatgpt) return null;
 
   const run = async (action: () => Promise<void>) => {
@@ -58,7 +58,7 @@ export function PlanControls({ plan, onProblem }: { plan: Plan; onProblem: (text
 export function PlanWelcome({ plan }: { plan: Plan }) {
   const status = useSyncExternalStore(plan.subscribe, plan.current);
   const [closing, setClosing] = useState(false);
-  const chatgpt = status?.chatgpt;
+  const chatgpt = status?.current === 'chatgpt' ? status.chatgpt : null;
   if (!chatgpt?.signed_in || chatgpt.welcomed || closing) return null;
   return (
     <div className="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="plan-welcome-title">

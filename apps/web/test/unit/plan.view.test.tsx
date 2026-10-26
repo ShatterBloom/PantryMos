@@ -39,8 +39,12 @@ function fakeApi(status: ModelStatus, options: { revoked?: boolean; fail?: boole
   return { api: api as unknown as Api, calls };
 }
 
-const signedOut: ModelStatus = { provider: 'chatgpt', chatgpt: { signed_in: false, email: null, model: null, welcomed: false } };
-const signedIn: ModelStatus = { provider: 'chatgpt', chatgpt: { signed_in: true, email: 'cook@example.com', model: 'gpt-plan-1', welcomed: true } };
+const MODELS: ModelStatus['models'] = [
+  { provider: 'bedrock', configured: true, model: 'nova' },
+  { provider: 'chatgpt', configured: true, model: null },
+];
+const signedOut: ModelStatus = { current: 'chatgpt', models: MODELS, chatgpt: { signed_in: false, email: null, model: null, welcomed: false } };
+const signedIn: ModelStatus = { current: 'chatgpt', models: MODELS, chatgpt: { signed_in: true, email: 'cook@example.com', model: 'gpt-plan-1', welcomed: true } };
 
 async function setup(status: ModelStatus, options?: { revoked?: boolean; fail?: boolean }) {
   const fake = fakeApi(status, options);
@@ -58,12 +62,17 @@ async function setup(status: ModelStatus, options?: { revoked?: boolean; fail?: 
 }
 
 describe('PlanControls', () => {
-  it('shows nothing when the agent does not run on a ChatGPT plan', async () => {
+  it('shows nothing unless the chosen model is a ChatGPT plan', async () => {
     const { container } = render(<PlanControls plan={new Plan(fakeApi(signedOut).api, () => {})} onProblem={() => {}} />);
     expect(container.textContent).toBe('');
-    const other = await setup({ provider: 'bedrock', chatgpt: null });
+    const other = await setup({ current: 'bedrock', models: [MODELS[0]!], chatgpt: null });
     expect(screen.queryByRole('button')).toBeNull();
     expect(other.calls).toEqual(['model']);
+    cleanup();
+    // Offered but not chosen: no sign-in button and no welcome, even signed in and not yet welcomed.
+    await setup({ ...signedIn, current: 'bedrock', chatgpt: { ...signedIn.chatgpt!, welcomed: false } });
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('signs in with "Continue with ChatGPT", sending the browser to ChatGPT', async () => {
@@ -106,7 +115,7 @@ describe('PlanControls', () => {
 
 describe('PlanWelcome', () => {
   it('shows the welcome once after the first sign-in, until "Got it"', async () => {
-    const { calls } = await setup({ provider: 'chatgpt', chatgpt: { ...signedIn.chatgpt!, welcomed: false } });
+    const { calls } = await setup({ ...signedIn, chatgpt: { ...signedIn.chatgpt!, welcomed: false } });
     const dialog = screen.getByRole('dialog', { name: "You're using your ChatGPT plan" });
     expect(dialog.textContent).toContain('ChatGPT plan');
     fireEvent.click(screen.getByRole('button', { name: 'Got it' }));

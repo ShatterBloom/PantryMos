@@ -1,5 +1,6 @@
-// The ChatGPT plan the agent may run on (Sign in with ChatGPT): its sign-in state, kept for the page.
-import type { Api, ModelStatus } from './api.ts';
+// The model the agent runs on, kept for the page: the models offered, the chosen one, and the
+// ChatGPT plan's sign-in state (Sign in with ChatGPT).
+import type { Api, ModelStatus, Provider } from './api.ts';
 
 /** How a sign-in ended, as the agent's callback reports it in `?chatgpt=`. */
 const RESULTS: Record<string, string | null> = {
@@ -36,6 +37,10 @@ export class Plan {
 
   async refresh(): Promise<void> {
     this.set(await this.api.model());
+  }
+
+  async choose(provider: Provider): Promise<void> {
+    this.set(await this.api.chooseModel(provider));
   }
 
   /** Sends the browser to ChatGPT; it comes back to the agent's callback, then to the app. */

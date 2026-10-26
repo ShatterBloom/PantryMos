@@ -767,6 +767,44 @@ h3 {
   box-shadow: var(--shadow);
 }
 
+/* The model picker: one row per provider; the ones not set up are greyed. */
+.model-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.model-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.model-option[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.model-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.model-name {
+  font-weight: 600;
+}
+.model-detail {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .dialog input {
   width: 100%;
   margin-top: 8px;

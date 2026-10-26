@@ -5,6 +5,7 @@ import { createServices, type Services } from './services.ts';
 import { Chat, MicIcon } from './ui/Chat.tsx';
 import { signInResult } from './lib/plan.ts';
 import { Inbox } from './ui/Inbox.tsx';
+import { ModelPicker } from './ui/Model.tsx';
 import { KitchenPanel, LedgerPanel, TimersStrip } from './ui/Panels.tsx';
 import { PlanControls, PlanWelcome } from './ui/Plan.tsx';
 
@@ -86,6 +87,7 @@ export function App() {
           </div>
         </div>
         <div className="controls">
+          <ModelPicker plan={plan} onProblem={(text) => conversation.notice(text)} />
           <PlanControls plan={plan} onProblem={(text) => conversation.notice(text)} />
           {handsFree ? (
             <button

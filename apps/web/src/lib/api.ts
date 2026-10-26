@@ -112,9 +112,15 @@ export interface Ledger {
   operations: LedgerOperation[];
 }
 
-/** The model the agent runs on; `chatgpt` is set when that is a ChatGPT plan (Sign in with ChatGPT). */
+export type Provider = 'bedrock' | 'openai' | 'chatgpt';
+
+/**
+ * The models the agent offers: every provider, `configured` for those MODEL_PROVIDERS sets up, and
+ * the chosen one (null until one is chosen). `chatgpt` is the sign-in, when a ChatGPT plan is offered.
+ */
 export interface ModelStatus {
-  provider: string;
+  current: Provider | null;
+  models: Array<{ provider: Provider; configured: boolean; model: string | null }>;
   chatgpt: { signed_in: boolean; email: string | null; model: string | null; welcomed: boolean } | null;
 }
 
@@ -229,6 +235,10 @@ export class Api {
 
   model() {
     return this.request<ModelStatus>('GET', '/api/model');
+  }
+
+  chooseModel(provider: Provider) {
+    return this.request<ModelStatus>('POST', '/api/model/choice', { provider });
   }
 
   /** Starts Sign in with ChatGPT: the URL to send the browser to. */
