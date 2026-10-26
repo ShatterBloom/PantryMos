@@ -7,5 +7,6 @@ coverage/
 *.log
 .DS_Store
 .vite/
-# Raw eval exchanges (pnpm eval); docs/eval-log.md is the kept report.
+# Eval output (pnpm eval): raw exchanges and the report; the README sums up the results.
 apps/agent/eval/out/
+docs/eval-log.md
