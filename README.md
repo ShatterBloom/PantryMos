@@ -231,13 +231,11 @@ What it was used for:
 - **Finding what to fix.** Reading the transcripts led to the speech guardrails above. Where the judge itself was wrong, the case was reviewed by hand and the judge's rules corrected.
 - **Checking the fixes.** A problem found in a conversation becomes a scenario, such as "a dozen" eggs recorded as 144: run before the fix to show it, and after to confirm it is gone.
 
-**On Nova 2 Lite** (two runs per case): 25 of 25 cases at commit `77430c3`.
-
-**On a ChatGPT plan** (the plan's default model, one run per case): 25 of 25 cases at commit `3f4ffb2`. The first full run, at `e3dee9b`, passed 22: all three failures (P2a, P2b, P16) had one cause, the model naming a meal it was correcting by a short name ("stir-fry") that didn't match a recipe. `3f4ffb2` fixed it (a short name finds the one recent meal it fits), and the whole eval was run again. Each run writes a report with every conversation to `docs/eval-log.md`; the reports are not kept in this repository.
+**Which models work.** Nova 2 Lite, which the prompt was tuned on, and a ChatGPT plan's default model follow these rules through every scenario. Smaller models such as gpt-4.1-mini work too, but sometimes ask one more question where Mos should put up a card or act. Each run writes a report with every conversation to `docs/eval-log.md`; the reports are not kept in this repository.
 
 ## Limitations
 
-- **Tuned on one model.** The prompt and speech guardrails were tuned on Nova 2 Lite. A ChatGPT plan's default model also passed the full eval, one run per case (see [Evaluating the model](#evaluating-the-model)); OpenAI's gpt-4.1-mini passed a 4-case spot check; nothing else has been tried. Run `pnpm eval` on a model before relying on it (the eval's reply check still runs on Bedrock).
+- **Tuned on one model.** The prompt and speech guardrails were tuned on Nova 2 Lite. A ChatGPT plan's default model and gpt-4.1-mini have been through the full eval too (see [Evaluating the model](#evaluating-the-model)); nothing else has been tried. Run `pnpm eval --provider <name>` on a model before relying on it (the eval's reply check still runs on Bedrock).
 - **One ChatGPT sign-in per agent**, from a browser on the machine the agent runs on: OpenAI calls back only to `127.0.0.1`.
 - **Voice runs in the browser.** Speech goes through the Web Speech API (English, `en-US`); there is no smart-speaker or phone app.
 - **Five seeded recipes**, written by hand; PantryMos doesn't generate recipes. More can be added: add an entry to [`db/seed/recipes.ts`](db/seed/recipes.ts) (ingredients, substitutes, steps and their timers), with any new ingredient in [`db/seed/catalog.ts`](db/seed/catalog.ts), and run `pnpm db:seed` again; it adds only what's new.
