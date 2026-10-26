@@ -1,42 +1,31 @@
 :root {
-  --bg: #f6f3ee;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f0ebe3;
-  --text: #22201c;
-  --muted: #6f685e;
-  --border: #e2dbd0;
-  --accent: #2f7d5b;
+  --surface-2: #f4f5f7;
+  --text: #1d2127;
+  --muted: #646b75;
+  --border: #e3e6ea;
+  --line: #1d2127;
+  --accent: #2d5bff;
   --accent-ink: #ffffff;
-  --accent-soft: #e2f0e8;
-  --user: #2f5d8a;
+  --accent-soft: #edf1ff;
+  --user: #1d2127;
   --user-ink: #ffffff;
-  --warn: #a4561b;
-  --warn-soft: #fbeadb;
-  --danger: #a33a32;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 4px 16px rgb(0 0 0 / 0.05);
-  --radius: 14px;
+  --warn: #b45309;
+  --warn-soft: #fff4e5;
+  --danger: #c0352b;
+  --shadow: none;
+  --radius: 16px;
+  --display: 'Lexend Variable', system-ui, sans-serif;
+  /* Glass buttons: a light pane with a bright top edge, over the white page. */
+  --glass: linear-gradient(180deg, rgb(255 255 255 / 0.95), rgb(236 240 246 / 0.7));
+  --glass-edge: rgb(29 33 39 / 0.12);
+  --glass-shine: inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 -1px 0 rgb(29 33 39 / 0.05),
+    0 1px 2px rgb(29 33 39 / 0.06), 0 6px 16px -6px rgb(29 33 39 / 0.12);
+  --glass-accent: linear-gradient(180deg, rgb(96 130 255 / 0.95), rgb(45 91 255 / 0.95));
+  --glass-accent-shine: inset 0 1px 0 rgb(255 255 255 / 0.45), inset 0 -1px 0 rgb(0 0 0 / 0.08),
+    0 6px 16px -6px rgb(45 91 255 / 0.55);
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #151412;
-    --surface: #1e1c19;
-    --surface-2: #27241f;
-    --text: #ece7df;
-    --muted: #a39b8f;
-    --border: #34302a;
-    --accent: #5cbf8f;
-    --accent-ink: #0f1d16;
-    --accent-soft: #1c3127;
-    --user: #4f86bd;
-    --user-ink: #ffffff;
-    --warn: #e39a5d;
-    --warn-soft: #3a2a1c;
-    --danger: #e2786f;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-    color-scheme: dark;
-  }
 }
 
 * {
@@ -74,6 +63,8 @@ h2,
 h3 {
   margin: 0;
   line-height: 1.25;
+  font-family: var(--display);
+  font-weight: 500;
 }
 
 .muted {
@@ -109,7 +100,8 @@ h3 {
 }
 
 .brand h1 {
-  font-size: 19px;
+  font-size: 20px;
+  letter-spacing: -0.01em;
 }
 
 .brand-sub {
@@ -121,13 +113,50 @@ h3 {
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 700;
-  font-size: 19px;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  background: #ffffff;
+  color: var(--line);
+}
+
+/* Mos, drawn in lines. The antenna light is on while listening; the eyes look around while thinking. */
+.robot-led {
+  fill: var(--surface);
+}
+.robot-listening .robot-led {
+  fill: var(--accent);
+  stroke: var(--accent);
+  animation: led 1.6s ease-in-out infinite;
+}
+.robot-thinking .robot-eyes {
+  animation: look 1.8s ease-in-out infinite;
+}
+@keyframes led {
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes look {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  30% {
+    transform: translateX(-1.2px);
+  }
+  70% {
+    transform: translateX(1.2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .robot-listening .robot-led,
+  .robot-thinking .robot-eyes,
+  .bubble-thinking span,
+  .pulse.is-live {
+    animation: none;
+  }
 }
 
 .controls {
@@ -135,6 +164,20 @@ h3 {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.controls .btn,
+.controls .btn-handsfree {
+  padding: 7px 14px;
+}
+
+.controls .btn-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
 }
 
 /* Sign in with ChatGPT: the black "Continue with ChatGPT" button, and the plan indicator. */
@@ -156,16 +199,38 @@ h3 {
   cursor: default;
 }
 
+/* The plan, its usage link and signing out, in one pane. */
 .plan {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  height: 36px;
+  padding: 0 4px 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  box-shadow: var(--glass-shine);
   font-size: 13px;
 }
 .plan-chip {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--accent-soft);
+  color: var(--text);
+}
+.plan-link,
+.plan-signout {
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--glass-edge);
+}
+.plan-signout {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid var(--glass-edge);
+  border-radius: 0 999px 999px 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+.plan-signout:not(:disabled):hover {
   color: var(--text);
 }
 .plan-link,
@@ -180,7 +245,7 @@ h3 {
   gap: 8px;
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   background: var(--surface);
   color: var(--text);
 }
@@ -234,7 +299,7 @@ h3 {
   flex-direction: column;
   min-height: 0;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -257,7 +322,7 @@ h3 {
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -279,11 +344,35 @@ h3 {
   color: var(--muted);
 }
 
+.empty-robot {
+  display: inline-block;
+  color: var(--line);
+}
+
 .empty-title {
-  font-size: 18px;
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 500;
   color: var(--text);
-  font-weight: 600;
-  margin-bottom: 4px;
+  margin: 8px 0 4px;
+}
+
+/* Mos's face beside each thing Mos says. */
+.mos-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.mos-face {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  color: var(--line);
 }
 
 .mos {
@@ -291,7 +380,12 @@ h3 {
   flex-direction: column;
   gap: 8px;
   align-items: flex-start;
-  max-width: min(560px, 92%);
+  min-width: 0;
+  max-width: min(600px, 88%);
+}
+
+.mos .bubble {
+  max-width: 100%;
 }
 
 .bubble {
@@ -303,12 +397,13 @@ h3 {
 }
 
 .bubble-mos {
-  background: var(--surface-2);
-  border-bottom-left-radius: 4px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-top-left-radius: 4px;
 }
 
 .bubble-proactive {
-  border-left: 3px solid var(--accent);
+  border-color: var(--accent);
 }
 
 .bubble-user {
@@ -374,7 +469,7 @@ h3 {
   display: flex;
   gap: 8px;
   padding: 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1.5px solid var(--border);
   background: var(--surface);
 }
 
@@ -383,8 +478,8 @@ h3 {
   min-width: 0;
   padding: 10px 14px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg);
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
   color: var(--text);
   font: inherit;
 }
@@ -401,7 +496,7 @@ h3 {
   height: 44px;
   flex: none;
   border-radius: 50%;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
   touch-action: none;
@@ -415,9 +510,9 @@ h3 {
 }
 
 .btn {
-  padding: 8px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
   background: var(--surface);
   color: var(--text);
 }
@@ -436,7 +531,7 @@ h3 {
 /* Cards */
 .card {
   width: 100%;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   padding: 12px 14px;
@@ -470,11 +565,9 @@ h3 {
 }
 
 .card-kind {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
   flex-basis: 100%;
 }
 
@@ -537,7 +630,7 @@ h3 {
   width: 100%;
   padding: 6px 8px;
   border-radius: 8px;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -619,7 +712,8 @@ h3 {
   background: transparent;
   color: var(--muted);
   border-bottom: 2px solid transparent;
-  font-weight: 600;
+  font-family: var(--display);
+  font-weight: 500;
 }
 
 .tab.is-active {
@@ -634,10 +728,10 @@ h3 {
 }
 
 .panel-sub {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
   margin: 18px 0 8px;
 }
 
@@ -753,18 +847,20 @@ h3 {
 .dialog-backdrop {
   position: fixed;
   inset: 0;
+  z-index: 10;
   display: grid;
   place-items: center;
-  background: rgb(0 0 0 / 0.4);
+  background: rgb(255 255 255 / 0.75);
+  backdrop-filter: blur(2px);
   padding: 16px;
 }
 
 .dialog {
-  width: min(360px, 100%);
+  width: min(380px, 100%);
   background: var(--surface);
+  border: 1.5px solid var(--line);
   border-radius: var(--radius);
-  padding: 20px;
-  box-shadow: var(--shadow);
+  padding: 22px;
 }
 
 /* The model picker: one row per provider; the ones not set up are greyed. */
@@ -780,8 +876,8 @@ h3 {
   align-items: flex-start;
   gap: 2px;
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -809,8 +905,8 @@ h3 {
   width: 100%;
   margin-top: 8px;
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -822,9 +918,9 @@ h3 {
   flex-direction: column;
   gap: 10px;
   padding: 12px 14px;
-  border: 1px solid var(--border);
+  border: 1.5px dashed var(--accent);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  background: var(--accent-soft);
 }
 
 .inbox-title {
@@ -837,4 +933,67 @@ h3 {
   margin: 0 0 6px;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Glass buttons. */
+.btn,
+.btn-handsfree,
+.btn-talk,
+.chip,
+.model-option {
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shine);
+  backdrop-filter: blur(12px) saturate(1.4);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.btn:not(:disabled):hover,
+.btn-handsfree:hover,
+.btn-talk:hover,
+.chip:not(:disabled):hover,
+.model-option:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.btn:not(:disabled):active,
+.btn-talk:active,
+.chip:not(:disabled):active,
+.model-option:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: inset 0 1px 2px rgb(29 33 39 / 0.12);
+}
+
+.btn-primary,
+.btn-talk.is-pushing {
+  background: var(--glass-accent);
+  border-color: rgb(29 60 200 / 0.5);
+  color: var(--accent-ink);
+  box-shadow: var(--glass-accent-shine);
+}
+
+.btn-handsfree.is-on,
+.model-option[aria-pressed='true'],
+.chip {
+  border-color: rgb(45 91 255 / 0.45);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.95), rgb(221 230 255 / 0.75));
+}
+
+.btn:focus-visible,
+.btn-handsfree:focus-visible,
+.btn-talk:focus-visible,
+.chip:focus-visible,
+.model-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn-handsfree,
+  .btn-talk,
+  .chip,
+  .model-option {
+    transition: none;
+  }
 }

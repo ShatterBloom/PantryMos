@@ -39,7 +39,7 @@ export function PlanControls({ plan, onProblem }: { plan: Plan; onProblem: (text
         Manage usage
       </a>
       <button
-        className="btn btn-quiet"
+        className="plan-signout"
         disabled={busy}
         onClick={() =>
           void run(async () => {
