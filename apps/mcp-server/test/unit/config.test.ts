@@ -15,7 +15,6 @@ describe('mcp-server loadConfig', () => {
       internalPort: 7411,
       serviceToken: REQUIRED.SERVICE_TOKEN,
       allowedOrigins: [],
-      allowAnonWrites: false,
       bodyLimitBytes: 64 * 1024,
       mcpRatePerMinute: 120,
       internalRatePerMinute: 300,
@@ -24,13 +23,12 @@ describe('mcp-server loadConfig', () => {
     });
   });
 
-  it('parses ports, limits, the origin list and the anon-writes flag from strings', () => {
+  it('parses ports, limits and the origin list from strings', () => {
     const config = loadConfig({
       ...REQUIRED,
       MCP_PORT: '8000',
       INTERNAL_PORT: '8001',
       MCP_ALLOWED_ORIGINS: ' http://localhost:6274 , ,http://127.0.0.1:6274',
-      ALLOW_ANON_WRITES: '1',
       MCP_BODY_LIMIT_BYTES: '1024',
       MCP_RATE_PER_MINUTE: '5',
     });
@@ -38,14 +36,9 @@ describe('mcp-server loadConfig', () => {
       mcpPort: 8000,
       internalPort: 8001,
       allowedOrigins: ['http://localhost:6274', 'http://127.0.0.1:6274'],
-      allowAnonWrites: true,
       bodyLimitBytes: 1024,
       mcpRatePerMinute: 5,
     });
-  });
-
-  it('treats any ALLOW_ANON_WRITES value other than "1" as off', () => {
-    expect(loadConfig({ ...REQUIRED, ALLOW_ANON_WRITES: 'true' }).allowAnonWrites).toBe(false);
   });
 
   it('rejects a missing database URL and a short service token', () => {

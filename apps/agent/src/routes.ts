@@ -6,7 +6,7 @@ import type { Pool } from './db.ts';
 import { runGate } from './gate/confirmGate.ts';
 import type { InternalClient, InternalResponse, ProposalView } from './internalClient.ts';
 import { ModelUnavailableError } from './model/types.ts';
-import { conversationExists, ensureConversation } from './store/conversations.ts';
+import { appConversations, conversationExists, ensureConversation } from './store/conversations.ts';
 import { insertEvent } from './store/events.ts';
 import { LeaseBusyError, type LeaseTiming, withLease } from './store/lease.ts';
 import { insertOutbound, listOutbound, outboundById } from './store/outbound.ts';
@@ -14,6 +14,7 @@ import { abandonRequest, claimRequest, completeRequest, finishedResponse, type R
 import { activeTimers } from './store/timers.ts';
 import { closeOpenWindows, openWindow, WINDOW_MS } from './store/windows.ts';
 import { runTurn, type TurnDeps } from './turn/runTurn.ts';
+import { fallbackSpeech } from './turn/speech.ts';
 
 export interface RouteDeps {
   pool: Pool;
@@ -35,9 +36,11 @@ const MessagesQuery = z.object({ conversation_id: z.uuid(), after: z.coerce.numb
 const ConversationQuery = z.object({ conversation_id: z.uuid() });
 const LedgerQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
 const ProposalParams = z.object({ id: z.uuid() });
-const CardBody = z.object({ version: z.number().int().min(1), request_id: z.uuid() });
-const EditBody = z.object({ base_version: z.number().int().min(1), changes: z.unknown(), request_id: z.uuid() });
-const RegenerateBody = z.object({ request_id: z.uuid() });
+/** The chat the app has open: where a card another MCP client made is answered. */
+const OpenChat = { conversation_id: z.uuid().optional() };
+const CardBody = z.object({ version: z.number().int().min(1), request_id: z.uuid(), ...OpenChat });
+const EditBody = z.object({ base_version: z.number().int().min(1), changes: z.unknown(), request_id: z.uuid(), ...OpenChat });
+const RegenerateBody = z.object({ request_id: z.uuid(), ...OpenChat });
 
 const badRequest = (reply: FastifyReply, issues: unknown) => reply.code(400).send({ error: 'bad_request', issues });
 
@@ -144,11 +147,26 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     const params = ProposalParams.safeParse(request.params);
     if (!params.success) return badRequest(reply, params.error.issues);
     const view = await internal.view(params.data.id);
-    if (!view || !(await conversationExists(pool, view.conversation_id, config.householdId))) return reply.code(404).send({ error: 'not_found' });
+    if (!view || view.household_id !== config.householdId) return reply.code(404).send({ error: 'not_found' });
     return reply.send(view);
   });
 
-  /** Card actions act on proposals of this household's conversations only, found from the card itself. */
+  /** Pending cards other MCP clients made: the app is where the user confirms them. */
+  app.get('/api/inbox', async (_request, reply) => {
+    const res = await internal.pending(config.householdId);
+    if (res.status !== 200) return reply.code(res.status).send(res.body);
+    const pending = res.body.proposals as Array<ProposalView & { client: string | null }>;
+    const fromApp = await appConversations(pool, [...new Set(pending.map((p) => p.conversation_id))], config.householdId);
+    return reply.send({
+      proposals: pending.filter((p) => !fromApp.has(p.conversation_id)).map(({ household_id: _h, conversation_id: _c, ...card }) => card),
+    });
+  });
+
+  /**
+   * Card actions act on this household's proposals only. A card made in one of the app's
+   * conversations is answered there. One another MCP client made is answered in the chat the app
+   * has open, with a fixed line rather than a model turn: that chat's model never saw the card.
+   */
   const cardAction =
     <B extends z.ZodType>(Body: B, route: string, act: (view: ProposalView, body: z.infer<B>) => Promise<CardResult>) =>
     async (request: FastifyRequest, reply: FastifyReply) => {
@@ -156,31 +174,39 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       const parsed = Body.safeParse(request.body);
       if (!params.success || !parsed.success) return badRequest(reply, [...(params.error?.issues ?? []), ...(parsed.error?.issues ?? [])]);
       const view = await internal.view(params.data.id);
-      if (!view || !(await conversationExists(pool, view.conversation_id, config.householdId))) {
+      if (!view || view.household_id !== config.householdId) return reply.code(404).send({ error: 'not_found' });
+      const body = parsed.data as z.infer<B> & { request_id: string; conversation_id?: string };
+      const fromApp = await conversationExists(pool, view.conversation_id, config.householdId);
+      const conversationId = fromApp ? view.conversation_id : body.conversation_id;
+      if (!conversationId || (!fromApp && !(await ensureConversation(pool, conversationId, config.householdId, config.userId)))) {
         return reply.code(404).send({ error: 'not_found' });
       }
-      const body = parsed.data as z.infer<B> & { request_id: string };
-      return idempotent(reply, { conversationId: view.conversation_id, requestId: body.request_id, route, payload: { proposal_id: view.proposal_id, ...body } }, () =>
-        withLease(pool, view.conversation_id, async (lease) => {
-          const finished = await finishedResponse(pool, view.conversation_id, body.request_id);
+      return idempotent(reply, { conversationId, requestId: body.request_id, route, payload: { proposal_id: view.proposal_id, ...body } }, () =>
+        withLease(pool, conversationId, async (lease) => {
+          const finished = await finishedResponse(pool, conversationId, body.request_id);
           if (finished) return finished as InternalResponse;
           const result = await act(view, body);
           await lease.write(async (tx) => {
-            for (const e of result.events ?? []) await insertEvent(tx, { conversationId: view.conversation_id, ...e });
+            for (const e of result.events ?? []) {
+              await insertEvent(tx, { conversationId, ...e, triggersTurn: fromApp && e.triggersTurn });
+              if (!fromApp && e.kind !== 'proposal_rejected') {
+                await insertOutbound(tx, { conversationId, turnType: 'gate', speech: fallbackSpeech({ kind: e.kind, payload: e.payload }) });
+              }
+            }
             // The user answered by button: an open voice question no longer stands (§8.5).
-            await closeOpenWindows(tx, view.conversation_id);
+            await closeOpenWindows(tx, conversationId);
             if (result.readBack) {
               // An edited or refreshed card is read back again (§8.8).
               const fresh = result.readBack;
               await insertOutbound(tx, {
-                conversationId: view.conversation_id,
+                conversationId,
                 turnType: 'gate',
                 speech: fresh.card.readback_text,
                 cards: [{ type: 'proposal', proposal_id: fresh.proposal_id, version: fresh.version, kind: fresh.kind, card: fresh.card, expires_at: fresh.expires_at }],
                 voicePrompt: { kind: 'proposal_confirm', proposal_id: fresh.proposal_id, version: fresh.version },
               });
             }
-            await completeRequest(tx, view.conversation_id, body.request_id, result.response);
+            await completeRequest(tx, conversationId, body.request_id, result.response);
           });
           return result.response;
         }, deps.leaseTiming),

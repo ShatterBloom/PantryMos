@@ -5,6 +5,14 @@ export function loadEnv(): void {
   if (existsSync('.env')) process.loadEnvFile('.env');
 }
 
+/** The household the dev seed creates; AGENT_HOUSEHOLD_ID picks another. */
+export const DEMO_HOUSEHOLD_ID = '00000000-0000-4000-8000-000000000001';
+
+/** The household the agent serves, which the seed creates and other clients' tokens join. */
+export function agentHouseholdId(): string {
+  return requireEnv('AGENT_HOUSEHOLD_ID', DEMO_HOUSEHOLD_ID);
+}
+
 export function requireEnv(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
   if (value === undefined || value === '') {

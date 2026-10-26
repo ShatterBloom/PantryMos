@@ -94,11 +94,12 @@ describe('web view reads', () => {
     await cardAction(agent, 'POST', `/api/proposals/${card.proposal_id}/confirm`, { version: 1 });
     expect(await get(`/api/proposals/${card.proposal_id}`)).toMatchObject({ status: 200, body: { status: 'committed' } });
 
-    // Another client's card is not in any of the agent's conversations.
+    // Another client's card in this household reads too (the inbox shows it); another household's doesn't.
     const foreign = (await callWrite(client, 'propose_adjustment', { item: 'egg', delta: -1, reason: 'discard' })).structuredContent as {
       proposal_id: string;
     };
-    expect((await get(`/api/proposals/${foreign.proposal_id}`)).status).toBe(404);
+    expect(await get(`/api/proposals/${foreign.proposal_id}`)).toMatchObject({ status: 200, body: { status: 'pending', kind: 'adjust' } });
+    expect((await get(`/api/proposals/${randomUUID()}`)).status).toBe(404);
     expect((await get('/api/proposals/nope')).status).toBe(400);
   });
 });

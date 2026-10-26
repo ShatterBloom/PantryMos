@@ -10,9 +10,6 @@ import type { Tx } from '../db/tx.ts';
 import { PantryError } from '../domain/errors.ts';
 import type { ToolContext } from './context.ts';
 
-/** Conversation used for writes from clients without `_meta`, only when ALLOW_ANON_WRITES=1. */
-export const INSPECTOR_CONVERSATION_ID = '00000000-0000-4000-8000-00000000c0de';
-
 const Uuid = z.uuid();
 
 export function successResult(data: Record<string, unknown>, text: string): CallToolResult {
@@ -43,19 +40,24 @@ export interface RequestMeta {
 /**
  * Reads `pantrymos/request_id` and `pantrymos/conversation_id` from the call's `_meta`.
  * They are never tool arguments, so the model cannot see or forge them through the schema.
+ *
+ * Any MCP client may leave them out. Without a request id the call gets a fresh one, so a retry
+ * is a new request (a repeated propose_* still lands on the same pending card, by its subject).
+ * Without a conversation id the call goes to the client's own conversation, whose id is the
+ * client's: the app lists that conversation's cards as coming from the client.
  */
 export function readRequestMeta(
   meta: Record<string, unknown> | undefined,
-  options: { needsConversation: boolean; allowAnonWrites: boolean },
+  options: { needsConversation: boolean; clientId: string },
 ): RequestMeta {
   const rawRequestId = meta?.[META_REQUEST_ID];
   let requestId: string;
-  if (rawRequestId === undefined && options.allowAnonWrites) {
+  if (rawRequestId === undefined) {
     requestId = randomUUID();
   } else if (Uuid.safeParse(rawRequestId).success) {
     requestId = rawRequestId as string;
   } else {
-    throw new PantryError('request_id_required', `This tool needs _meta["${META_REQUEST_ID}"] set to a UUID.`);
+    throw new PantryError('request_id_required', `_meta["${META_REQUEST_ID}"] must be a UUID, or left out.`);
   }
 
   const rawConversationId = meta?.[META_CONVERSATION_ID];
@@ -63,14 +65,10 @@ export function readRequestMeta(
   if (Uuid.safeParse(rawConversationId).success) {
     conversationId = rawConversationId as string;
   } else if (options.needsConversation) {
-    if (rawConversationId === undefined && options.allowAnonWrites) {
-      conversationId = INSPECTOR_CONVERSATION_ID;
-    } else {
-      throw new PantryError(
-        'conversation_id_required',
-        `This tool needs _meta["${META_CONVERSATION_ID}"] set to a UUID.`,
-      );
+    if (rawConversationId !== undefined) {
+      throw new PantryError('conversation_id_required', `_meta["${META_CONVERSATION_ID}"] must be a UUID, or left out.`);
     }
+    conversationId = options.clientId;
   }
   return { requestId, conversationId };
 }
@@ -116,7 +114,7 @@ export async function runWriteTool(
   try {
     meta = readRequestMeta(call.meta, {
       needsConversation: call.needsConversation,
-      allowAnonWrites: ctx.config.allowAnonWrites,
+      clientId: ctx.auth.clientId,
     });
   } catch (err) {
     if (err instanceof PantryError) return errorResult(err.toBody());

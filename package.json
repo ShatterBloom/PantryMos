@@ -18,6 +18,7 @@
     "db:bootstrap": "node scripts/db-bootstrap.ts",
     "db:migrate": "node scripts/db-migrate.ts",
     "db:seed": "node scripts/seed-dev.ts",
+    "mcp:client": "node scripts/mcp-client.ts",
     "db:reset-test": "node scripts/db-migrate.ts --reset-test",
     "dev:mcp": "pnpm --filter @pantrymos/mcp-server dev",
     "dev:agent": "pnpm --filter @pantrymos/agent dev",

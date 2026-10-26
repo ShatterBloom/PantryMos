@@ -43,6 +43,7 @@ describe('GET /internal/proposals/:id', () => {
         kind: 'intake',
         status: 'pending',
         version: 1,
+        household_id: kitchen.householdId,
         conversation_id: conversationId,
         card: p.card,
         editable: { type: 'items', items: [{ name: 'egg', quantity: 6 }], lines: [{ item: 'egg', quantity: 6, unit: 'count' }] },

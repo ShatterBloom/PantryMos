@@ -166,6 +166,7 @@ export interface ProposalView {
   /** A pending card past its expiry reads as `expired`, though only an action marks it so. */
   status: 'pending' | 'committed' | 'rejected' | 'superseded' | 'stale' | 'expired';
   version: number;
+  household_id: string;
   conversation_id: string;
   card: unknown;
   /** What the app may edit, and how to send it back (§4.4). */
@@ -180,7 +181,7 @@ export async function proposalView(q: Queryable, proposalId: string): Promise<Pr
   >(
     `SELECT id AS proposal_id, kind,
             CASE WHEN status = 'pending' AND expires_at <= now() THEN 'expired' ELSE status END AS status,
-            version, conversation_id, payload -> 'card' AS card, input, payload, expires_at
+            version, household_id, conversation_id, payload -> 'card' AS card, input, payload, expires_at
        FROM pantry.proposals WHERE id = $1`,
     [proposalId],
   );

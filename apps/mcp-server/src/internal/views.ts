@@ -1,7 +1,7 @@
 // Read models for the web view (IMPLEMENTATION_PLAN §4.4, §8.8): the inventory and the ledger.
 import { householdToday, type Queryable } from '../db/catalog.ts';
 import { activeBatches } from '../db/inventory.ts';
-import type { ProposalKind } from '../db/proposals.ts';
+import { type ProposalKind, type ProposalView, proposalView } from '../db/proposals.ts';
 import { itemInfo } from '../db/sessions.ts';
 import { dateLabel, type PackageDateType } from '../domain/dates.ts';
 import { describeOperation } from '../domain/operations.ts';
@@ -33,6 +33,31 @@ export async function inventoryView(q: Queryable, householdId: string) {
     items,
     shopping_list: shopping.map((s) => ({ ...s, quantity: s.quantity === null ? null : Number(s.quantity) })),
   };
+}
+
+/** The most cards the inbox lists at once. */
+const PENDING_LIMIT = 50;
+
+/**
+ * Pending cards, oldest first, each as the card shows it. `client` names the MCP client that made
+ * it when the card is in that client's own conversation (one sent without `_meta`, see readRequestMeta).
+ */
+export async function pendingView(q: Queryable, householdId: string) {
+  const { rows } = await q.query<{ id: string; client: string | null }>(
+    `SELECT p.id, c.name AS client
+       FROM pantry.proposals p
+       LEFT JOIN pantry.api_clients c ON c.id = p.conversation_id AND c.household_id = p.household_id
+      WHERE p.household_id = $1 AND p.status = 'pending' AND p.expires_at > now()
+      ORDER BY p.created_at, p.id
+      LIMIT $2`,
+    [householdId, PENDING_LIMIT],
+  );
+  const proposals: Array<ProposalView & { client: string | null }> = [];
+  for (const row of rows) {
+    const view = await proposalView(q, row.id);
+    if (view?.status === 'pending') proposals.push({ ...view, client: row.client });
+  }
+  return { proposals };
 }
 
 interface LedgerRow {

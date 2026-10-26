@@ -380,7 +380,6 @@ export function mcpTestConfig(overrides: Partial<Config> = {}): Config {
     internalPort: 0,
     serviceToken: TEST_SERVICE_TOKEN,
     allowedOrigins: [INSPECTOR_ORIGIN],
-    allowAnonWrites: false,
     bodyLimitBytes: 64 * 1024,
     mcpRatePerMinute: 1000,
     internalRatePerMinute: 1000,

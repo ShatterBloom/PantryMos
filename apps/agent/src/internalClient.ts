@@ -10,6 +10,7 @@ export interface ProposalView {
   kind: 'intake' | 'consume' | 'revise_consumption' | 'adjust' | 'undo';
   status: 'pending' | 'committed' | 'rejected' | 'superseded' | 'stale' | 'expired';
   version: number;
+  household_id: string;
   conversation_id: string;
   card: { title: string; lines: string[]; warnings: string[]; readback_text: string };
   /** What the app may edit (mcp-server domain/editable.ts); passed through to the web. */
@@ -60,6 +61,11 @@ export class InternalClient {
 
   ledger(householdId: string, limit: number): Promise<InternalResponse> {
     return this.call('GET', `/internal/views/ledger?limit=${limit}`, undefined, { 'x-household-id': householdId });
+  }
+
+  /** The household's pending cards, each with the MCP client that made it, when known. */
+  pending(householdId: string): Promise<InternalResponse> {
+    return this.call('GET', '/internal/views/pending', undefined, { 'x-household-id': householdId });
   }
 
   private async call(

@@ -1,6 +1,6 @@
 // The page's conversation: history and polling, speaking and acks, the voice window, and card states.
 import { beforeEach, describe, expect, it } from 'vitest';
-import { type Api, ApiError, type Message, type ProposalCard, type ProposalView } from '../../src/lib/api.ts';
+import { type Api, ApiError, type InboxCard, type Message, type ProposalCard, type ProposalView } from '../../src/lib/api.ts';
 import { Conversation, describe as describeError, type Memory } from '../../src/lib/conversation.ts';
 import { Speaker, type Synth } from '../../src/lib/speaker.ts';
 
@@ -27,7 +27,7 @@ const proposalCard = (id: string, kind: 'consume' | 'adjust' = 'adjust', version
 
 /** The agent as the conversation sees it. */
 class FakeApi {
-  inbox: Message[] = [];
+  posted: Message[] = [];
   views = new Map<string, Partial<ProposalView>>();
   chats: Array<{ text: string; mode: string }> = [];
   acks: number[] = [];
@@ -46,7 +46,7 @@ class FakeApi {
   async messages(_c: string, after: number) {
     this.messageCalls++;
     if (this.unknownConversation) throw new ApiError(404, { error: 'not_found' });
-    return { messages: this.inbox.filter((m) => m.id > after) };
+    return { messages: this.posted.filter((m) => m.id > after) };
   }
   async ack(_c: string, id: number) {
     if (this.ackError) throw this.ackError;
@@ -58,15 +58,25 @@ class FakeApi {
     if (!view) throw new ApiError(404, {});
     return view as ProposalView;
   }
-  private async action(name: string) {
+  /** Cards other MCP clients left. */
+  pending: InboxCard[] = [];
+  inboxCalls = 0;
+  async inbox() {
+    this.inboxCalls++;
+    return { proposals: this.pending };
+  }
+  /** The chat each card action named. */
+  actionChats: string[] = [];
+  private async action(name: string, conversationId: string) {
     this.actions.push(name);
+    this.actionChats.push(conversationId);
     if (this.actionError) throw this.actionError;
     return {};
   }
-  confirm = (id: string, v: number) => this.action(`confirm ${id} v${v}`);
-  reject = (id: string, v: number) => this.action(`reject ${id} v${v}`);
-  regenerate = (id: string) => this.action(`regenerate ${id}`);
-  edit = (id: string, v: number, changes: unknown) => this.action(`edit ${id} v${v} ${JSON.stringify(changes)}`);
+  confirm = (id: string, v: number, c: string) => this.action(`confirm ${id} v${v}`, c);
+  reject = (id: string, v: number, c: string) => this.action(`reject ${id} v${v}`, c);
+  regenerate = (id: string, c: string) => this.action(`regenerate ${id}`, c);
+  edit = (id: string, v: number, changes: unknown, c: string) => this.action(`edit ${id} v${v} ${JSON.stringify(changes)}`, c);
 }
 
 class InstantSynth implements Synth {
@@ -126,7 +136,7 @@ describe('Conversation', () => {
         { afterMessageId: 2, text: 'unanswered', mode: 'text' },
       ],
     };
-    api.inbox = [message(1), message(2, { cards: [proposalCard('p1')] })];
+    api.posted = [message(1), message(2, { cards: [proposalCard('p1')] })];
     api.views.set('p1', { status: 'committed', kind: 'adjust' });
     const conversation = build();
     expect(conversation.conversationId).toBe('conv-0');
@@ -155,7 +165,7 @@ describe('Conversation', () => {
     await conversation.poll();
     const listener: string[] = [];
     conversation.subscribe(() => listener.push(conversation.getState().thinking ? 'thinking' : 'idle'));
-    api.inbox.push(message(1, { speech: 'Step 1: crack the eggs.', cards: [{ type: 'step', session_id: 's', step_no: 1 }] }));
+    api.posted.push(message(1, { speech: 'Step 1: crack the eggs.', cards: [{ type: 'step', session_id: 's', step_no: 1 }] }));
     await conversation.send('  cook the stir-fry ', 'voice');
     expect(api.chats).toEqual([{ text: 'cook the stir-fry', mode: 'voice' }]);
     expect(listener[0]).toBe('thinking');
@@ -168,7 +178,7 @@ describe('Conversation', () => {
     expect(api.chats).toHaveLength(1);
 
     // The last step is not the start of cooking.
-    api.inbox.push(message(2, { cards: [{ type: 'step', session_id: 's', step_no: 4, done: true }] }));
+    api.posted.push(message(2, { cards: [{ type: 'step', session_id: 's', step_no: 4, done: true }] }));
     await conversation.poll();
     expect(events).toEqual(['step']);
   });
@@ -201,7 +211,7 @@ describe('Conversation', () => {
   it('opens the voice window once a question has been heard, until it ends or is answered', async () => {
     const conversation = build();
     await conversation.poll();
-    api.inbox.push(message(1, { voice_prompt: { kind: 'proposal_confirm', proposal_id: 'p1', version: 1 }, cards: [proposalCard('p1')] }));
+    api.posted.push(message(1, { voice_prompt: { kind: 'proposal_confirm', proposal_id: 'p1', version: 1 }, cards: [proposalCard('p1')] }));
     await conversation.poll();
     await settle();
     expect(api.acks).toEqual([1]);
@@ -219,19 +229,19 @@ describe('Conversation', () => {
   it('acks only messages that asked, ignores a superseded ack, and reports other failures', async () => {
     const conversation = build();
     await conversation.poll();
-    api.inbox.push(message(1));
+    api.posted.push(message(1));
     await conversation.poll();
     await settle();
     expect(api.acks).toEqual([]);
 
     api.ackError = new ApiError(409, { error: 'superseded' });
-    api.inbox.push(message(2, { voice_prompt: { kind: 'timer_offer', label: 'eggs', seconds: 60, session_id: 's', step_no: 1 } }));
+    api.posted.push(message(2, { voice_prompt: { kind: 'timer_offer', label: 'eggs', seconds: 60, session_id: 's', step_no: 1 } }));
     await conversation.poll();
     await settle();
     expect(conversation.getState().entries.filter((e) => e.kind === 'notice')).toEqual([]);
 
     api.ackError = new ApiError(500, {});
-    api.inbox.push(message(3, { voice_prompt: { kind: 'timer_offer', label: 'eggs', seconds: 60, session_id: 's', step_no: 1 } }));
+    api.posted.push(message(3, { voice_prompt: { kind: 'timer_offer', label: 'eggs', seconds: 60, session_id: 's', step_no: 1 } }));
     await conversation.poll();
     await settle();
     expect(conversation.getState().entries.at(-1)).toMatchObject({ kind: 'notice', text: 'Something went wrong. Please try again.' });
@@ -242,7 +252,7 @@ describe('Conversation', () => {
     const conversation = build();
     await conversation.poll();
     const card = proposalCard('p1', 'consume');
-    api.inbox.push(message(1, { cards: [card] }));
+    api.posted.push(message(1, { cards: [card] }));
     await conversation.poll();
     expect(conversation.getState().proposals).toEqual({ p1: 'pending' });
 
@@ -256,14 +266,14 @@ describe('Conversation', () => {
 
     // A card committed by voice is noticed by polling.
     const other = proposalCard('p2', 'consume');
-    api.inbox.push(message(2, { cards: [other] }));
+    api.posted.push(message(2, { cards: [other] }));
     await conversation.poll();
     api.views.set('p2', { status: 'committed', kind: 'consume' });
     await conversation.refreshProposals();
     expect(events).toEqual(['meal', 'meal']);
 
     // A card that vanished reads as expired.
-    api.inbox.push(message(3, { cards: [proposalCard('p3')] }));
+    api.posted.push(message(3, { cards: [proposalCard('p3')] }));
     await conversation.poll();
     await conversation.refreshProposals();
     expect(conversation.getState().proposals.p3).toBe('expired');
@@ -285,14 +295,47 @@ describe('Conversation', () => {
     api.views.delete('p1');
     expect(await conversation.act(card, 'confirm')).toBe('Invalid changes for this card.'); // a refresh that fails is ignored
     expect(api.actions.slice(0, 4)).toEqual(['confirm p1 v2', 'reject p1 v2', 'regenerate p1', 'edit p1 v2 {"delta":-3}']);
+    expect(new Set(api.actionChats)).toEqual(new Set([conversation.conversationId]));
     expect((await conversation.loadProposal('p2').catch((e: unknown) => e)) instanceof ApiError).toBe(true);
+  });
+
+  it("keeps the inbox of other clients' cards, and re-reads it after a card is answered", async () => {
+    const conversation = build();
+    const inboxCard = (id: string, version = 1): InboxCard => ({
+      proposal_id: id,
+      kind: 'intake',
+      status: 'pending',
+      version,
+      card: { title: 'Add milk', lines: ['1 l milk'], warnings: [], readback_text: 'R' },
+      editable: null,
+      expires_at: '2026-10-21T01:00:00Z',
+      client: 'Claude Desktop',
+    });
+    let changes = 0;
+    conversation.subscribe(() => changes++);
+    api.pending = [inboxCard('x1')];
+    await conversation.refreshInbox();
+    expect(conversation.getState().inbox.map((c) => c.proposal_id)).toEqual(['x1']);
+    // The same cards again: nothing to redraw.
+    const seen = changes;
+    await conversation.refreshInbox();
+    expect(changes).toBe(seen);
+    api.pending = [inboxCard('x1', 2)];
+    await conversation.refreshInbox();
+    expect(conversation.getState().inbox[0]!.version).toBe(2);
+
+    api.views.set('x1', { status: 'committed', kind: 'intake' });
+    api.pending = [];
+    expect(await conversation.act({ type: 'proposal', ...inboxCard('x1', 2) }, 'confirm')).toBeNull();
+    expect(api.actionChats).toEqual([conversation.conversationId]);
+    expect(conversation.getState().inbox).toEqual([]);
   });
 
   it("reports the action's own outcome though catching up afterwards fails, and closes the window", async () => {
     const conversation = build();
     await conversation.poll();
     const card = proposalCard('p1');
-    api.inbox.push(message(1, { voice_prompt: { kind: 'proposal_confirm', proposal_id: 'p1', version: 1 }, cards: [card] }));
+    api.posted.push(message(1, { voice_prompt: { kind: 'proposal_confirm', proposal_id: 'p1', version: 1 }, cards: [card] }));
     await conversation.poll();
     await settle();
     expect(conversation.openWindow()).toBe('proposal_confirm');

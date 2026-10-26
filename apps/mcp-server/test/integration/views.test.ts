@@ -1,4 +1,4 @@
-// GET /internal/views/inventory and /ledger: the web view's read models (§4.4, §8.8).
+// GET /internal/views/inventory, /ledger and /pending: the web view's read models (§4.4, §8.8).
 import { randomUUID } from 'node:crypto';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -33,6 +33,33 @@ describe('internal views', () => {
 
   const view = (path: string, householdId = kitchen.householdId) =>
     internalCall(servers, path, undefined, 'GET', { 'x-household-id': householdId });
+
+  it("lists pending cards oldest first, naming the client of a card made in that client's own conversation", async () => {
+    await stockKitchen(kitchen, { egg: 6 });
+    const fromApp = (await callWrite(client, 'propose_intake', { items: [{ name: 'milk', quantity: 1, unit: 'l' }] }, { conversationId: randomUUID() }))
+      .structuredContent as { proposal_id: string };
+    // A client that sends no _meta: its card is in its own conversation.
+    const external = (await client.callTool({ name: 'propose_adjustment', arguments: { item: 'egg', delta: -2, reason: 'discard' } })).structuredContent as {
+      proposal_id: string;
+    };
+    const done = (await callWrite(client, 'propose_intake', { items: [{ name: 'tomato', quantity: 2 }] })).structuredContent as { proposal_id: string; version: number };
+    expect((await confirmCard(servers, done, 1)).status).toBe(200);
+    const expired = (await callWrite(client, 'propose_intake', { items: [{ name: 'rice', quantity: 1, unit: 'kg' }] })).structuredContent as { proposal_id: string };
+    await withAdmin((admin) => admin.query(`UPDATE pantry.proposals SET expires_at = now() WHERE id = $1`, [expired.proposal_id]));
+
+    const res = await view('/internal/views/pending');
+    expect(res.status).toBe(200);
+    const proposals = res.body.proposals as Array<Record<string, unknown>>;
+    expect(proposals.map((p) => [p.proposal_id, p.client])).toEqual([
+      [fromApp.proposal_id, null],
+      [external.proposal_id, 'test'],
+    ]);
+    expect(proposals[1]).toMatchObject({ kind: 'adjust', status: 'pending', version: 1, household_id: kitchen.householdId, card: expect.any(Object) });
+
+    // Another household's view has none of them.
+    const other = await createDemoKitchen();
+    expect((await view('/internal/views/pending', other.householdId)).body).toEqual({ proposals: [] });
+  });
 
   it('lists stock by item, in FEFO order, and the open shopping list', async () => {
     await stockKitchen(kitchen, { egg: 6 }, 3);

@@ -9,7 +9,7 @@ import { RejectBody, rejectProposal } from '../commit/reject.ts';
 import type { Config } from '../config.ts';
 import type { Pool } from '../db/pool.ts';
 import type { Outcome } from '../db/requestLog.ts';
-import { householdExists, inventoryView, ledgerView } from './views.ts';
+import { householdExists, inventoryView, ledgerView, pendingView } from './views.ts';
 
 const ProposalParams = z.object({ id: z.uuid() });
 const HouseholdHeader = z.object({ 'x-household-id': z.uuid() });
@@ -78,6 +78,7 @@ export function registerInternalRoutes(app: FastifyInstance, pool: Pool, config:
 
   app.get('/internal/views/inventory', view(z.object({}), (householdId) => inventoryView(pool, householdId)));
   app.get('/internal/views/ledger', view(LedgerQuery, (householdId, { limit }) => ledgerView(pool, householdId, limit)));
+  app.get('/internal/views/pending', view(z.object({}), (householdId) => pendingView(pool, householdId)));
 
   app.post('/internal/proposals/:id/reject', action(RejectBody, (id, body) => rejectProposal(pool, id, body)));
   app.patch('/internal/proposals/:id', action(EditBody, (id, body) => editProposal(pool, id, body)));

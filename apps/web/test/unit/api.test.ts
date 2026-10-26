@@ -55,21 +55,28 @@ describe('Api', () => {
       'POST /api/proposals/p1/reject': [200, {}],
       'PATCH /api/proposals/p1': [200, {}],
       'POST /api/proposals/p1/regenerate': [200, {}],
+      'GET /api/inbox': [200, { proposals: [] }],
     });
     const api = new Api({ fetch: agent.fetch, passcode: async () => null, newId });
     expect(await api.chat('c1', 'hello', 'voice', 'r1')).toEqual({ message_ids: [1] });
     await api.ack('c1', 7);
-    await api.confirm('p1', 2);
-    await api.reject('p1', 2);
-    await api.edit('p1', 2, { delta: -1 });
-    await api.regenerate('p1');
+    await api.confirm('p1', 2, 'c1');
+    await api.reject('p1', 2, 'c1');
+    await api.edit('p1', 2, { delta: -1 }, 'c1');
+    await api.regenerate('p1', 'c1');
+    expect(await api.inbox()).toEqual({ proposals: [] });
     expect(agent.calls).toEqual([
       { path: '/api/chat', method: 'POST', body: { conversation_id: 'c1', request_id: 'r1', text: 'hello', input_mode: 'voice' } },
       { path: '/api/voice-windows/ack', method: 'POST', body: { conversation_id: 'c1', message_id: 7, request_id: expect.stringMatching(/^id-/) } },
-      { path: '/api/proposals/p1/confirm', method: 'POST', body: { version: 2, request_id: expect.stringMatching(/^id-/) } },
-      { path: '/api/proposals/p1/reject', method: 'POST', body: { version: 2, request_id: expect.stringMatching(/^id-/) } },
-      { path: '/api/proposals/p1', method: 'PATCH', body: { base_version: 2, changes: { delta: -1 }, request_id: expect.stringMatching(/^id-/) } },
-      { path: '/api/proposals/p1/regenerate', method: 'POST', body: { request_id: expect.stringMatching(/^id-/) } },
+      { path: '/api/proposals/p1/confirm', method: 'POST', body: { version: 2, request_id: expect.stringMatching(/^id-/), conversation_id: 'c1' } },
+      { path: '/api/proposals/p1/reject', method: 'POST', body: { version: 2, request_id: expect.stringMatching(/^id-/), conversation_id: 'c1' } },
+      {
+        path: '/api/proposals/p1',
+        method: 'PATCH',
+        body: { base_version: 2, changes: { delta: -1 }, request_id: expect.stringMatching(/^id-/), conversation_id: 'c1' },
+      },
+      { path: '/api/proposals/p1/regenerate', method: 'POST', body: { request_id: expect.stringMatching(/^id-/), conversation_id: 'c1' } },
+      { path: '/api/inbox', method: 'GET', body: undefined },
     ]);
   });
 
@@ -99,7 +106,7 @@ describe('Api', () => {
   it('turns an error status into an ApiError with the body', async () => {
     const agent = fakeAgent({ 'POST /api/proposals/p1/confirm': [409, { code: 'stale_state', message: 'Things changed.' }] });
     const api = new Api({ fetch: agent.fetch, passcode: async () => null, newId });
-    const err = await api.confirm('p1', 1).catch((e: unknown) => e);
+    const err = await api.confirm('p1', 1, 'c1').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status: 409, message: 'Things changed.', body: { code: 'stale_state' } });
     const bare = await new Api({ fetch: fakeAgent({ 'GET /api/inventory': [502, undefined] }).fetch, passcode: async () => null, newId })

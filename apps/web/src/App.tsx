@@ -4,6 +4,7 @@ import { forgetConversation, speechRecognitionAvailable } from './browser.ts';
 import { createServices, type Services } from './services.ts';
 import { Chat, MicIcon } from './ui/Chat.tsx';
 import { signInResult } from './lib/plan.ts';
+import { Inbox } from './ui/Inbox.tsx';
 import { KitchenPanel, LedgerPanel, TimersStrip } from './ui/Panels.tsx';
 import { PlanControls, PlanWelcome } from './ui/Plan.tsx';
 
@@ -35,6 +36,7 @@ export function App() {
       try {
         await conversation.poll();
         await conversation.refreshProposals();
+        await conversation.refreshInbox();
       } catch {
         // Shown by the panels' own polling; the next tick tries again.
       }
@@ -111,6 +113,7 @@ export function App() {
       <main className="layout">
         <div className="main-col">
           <TimersStrip api={api} conversationId={conversation.conversationId} />
+          <Inbox conversation={conversation} />
           <Chat conversation={conversation} pushToTalk={services.pushToTalk} />
         </div>
         <aside className="side-col" aria-label="Kitchen">

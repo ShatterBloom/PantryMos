@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { PantryError } from '../../src/domain/errors.ts';
 import {
   errorResult,
-  INSPECTOR_CONVERSATION_ID,
   parseErrorResult,
   readRequestMeta,
   runReadTool,
@@ -12,8 +11,8 @@ import {
 
 const RID = '6f1c2b0e-8a8e-4c55-9d0e-1f6a3a1e2b3c';
 const CID = '0b8a7f43-5d1f-4c3e-8c2b-7a9e4d6f1a20';
-const strict = { needsConversation: true, allowAnonWrites: false };
-const anon = { needsConversation: true, allowAnonWrites: true };
+const CLIENT = '3d0c9a52-7b1e-4f6a-9c2d-5e8f1a4b7c90';
+const options = { needsConversation: true, clientId: CLIENT };
 
 const codeOf = (fn: () => unknown) => {
   try {
@@ -26,37 +25,33 @@ const codeOf = (fn: () => unknown) => {
 
 describe('readRequestMeta', () => {
   it('reads both ids from _meta', () => {
-    expect(readRequestMeta({ [META_REQUEST_ID]: RID, [META_CONVERSATION_ID]: CID }, strict)).toEqual({
+    expect(readRequestMeta({ [META_REQUEST_ID]: RID, [META_CONVERSATION_ID]: CID }, options)).toEqual({
       requestId: RID,
       conversationId: CID,
     });
   });
 
-  it('requires a UUID request_id', () => {
-    expect(codeOf(() => readRequestMeta(undefined, strict))).toBe('request_id_required');
-    expect(codeOf(() => readRequestMeta({ [META_REQUEST_ID]: 'abc', [META_CONVERSATION_ID]: CID }, strict))).toBe(
-      'request_id_required',
-    );
-    expect(codeOf(() => readRequestMeta({ [META_REQUEST_ID]: 42, [META_CONVERSATION_ID]: CID }, strict))).toBe(
-      'request_id_required',
-    );
+  it("gives a call without _meta a fresh request id and the client's own conversation", () => {
+    const meta = readRequestMeta(undefined, options);
+    expect(meta.requestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(meta.conversationId).toBe(CLIENT);
+    expect(readRequestMeta(undefined, options).requestId).not.toBe(meta.requestId);
+    expect(readRequestMeta({ [META_REQUEST_ID]: RID }, options)).toEqual({ requestId: RID, conversationId: CLIENT });
   });
 
-  it('requires a conversation id only for tools that route outcomes to a conversation', () => {
-    expect(codeOf(() => readRequestMeta({ [META_REQUEST_ID]: RID }, strict))).toBe('conversation_id_required');
-    expect(readRequestMeta({ [META_REQUEST_ID]: RID }, { ...strict, needsConversation: false })).toEqual({
+  it('needs a conversation only for tools that route outcomes to one', () => {
+    expect(readRequestMeta({ [META_REQUEST_ID]: RID }, { ...options, needsConversation: false })).toEqual({
       requestId: RID,
       conversationId: null,
     });
   });
 
-  it('dev mode fills in ids that are absent, but never accepts malformed ones', () => {
-    const meta = readRequestMeta(undefined, anon);
-    expect(meta.requestId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(meta.conversationId).toBe(INSPECTOR_CONVERSATION_ID);
-    expect(readRequestMeta(undefined, anon).requestId).not.toBe(meta.requestId);
-    expect(codeOf(() => readRequestMeta({ [META_REQUEST_ID]: 'abc' }, anon))).toBe('request_id_required');
-    expect(codeOf(() => readRequestMeta({ [META_REQUEST_ID]: RID, [META_CONVERSATION_ID]: 'x' }, anon))).toBe(
+  it('never accepts malformed ids', () => {
+    expect(codeOf(() => readRequestMeta({ [META_REQUEST_ID]: 'abc', [META_CONVERSATION_ID]: CID }, options))).toBe(
+      'request_id_required',
+    );
+    expect(codeOf(() => readRequestMeta({ [META_REQUEST_ID]: 42 }, options))).toBe('request_id_required');
+    expect(codeOf(() => readRequestMeta({ [META_REQUEST_ID]: RID, [META_CONVERSATION_ID]: 'x' }, options))).toBe(
       'conversation_id_required',
     );
   });

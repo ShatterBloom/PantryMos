@@ -1,7 +1,7 @@
 // The conversation as the page shows and speaks it: polling, the timeline, read-back acks and the
 // open voice window, and the state of the cards on screen (IMPLEMENTATION_PLAN §8.5–§8.8).
 import type { WindowKind } from './addressing.ts';
-import { type Api, ApiError, type Message, type ProposalCard, type ProposalStatus, type ProposalView } from './api.ts';
+import { type Api, ApiError, type InboxCard, type Message, type ProposalCard, type ProposalStatus, type ProposalView } from './api.ts';
 import type { Speaker, Spoken } from './speaker.ts';
 
 /** Where a ChatGPT plan's usage is managed. */
@@ -19,6 +19,8 @@ export interface ConversationState {
   window: { kind: WindowKind; endsAt: number } | null;
   /** Card statuses, polled while pending. */
   proposals: Record<string, ProposalStatus>;
+  /** Pending cards other MCP clients made, answered from this chat. */
+  inbox: InboxCard[];
 }
 
 export interface ConversationHooks {
@@ -38,7 +40,7 @@ export interface Memory {
 
 export class Conversation {
   readonly conversationId: string;
-  private state: ConversationState = { entries: [], thinking: false, window: null, proposals: {} };
+  private state: ConversationState = { entries: [], thinking: false, window: null, proposals: {}, inbox: [] };
   private readonly listeners = new Set<() => void>();
   private lastId = 0;
   private loaded = false;
@@ -124,6 +126,14 @@ export class Conversation {
     }
   }
 
+  /** Re-reads the cards other MCP clients left for the user to confirm. */
+  async refreshInbox(): Promise<void> {
+    const { proposals } = await this.api.inbox();
+    const before = this.state.inbox;
+    const same = before.length === proposals.length && before.every((c, i) => c.proposal_id === proposals[i]!.proposal_id && c.version === proposals[i]!.version);
+    if (!same) this.set({ inbox: proposals });
+  }
+
   /** A card as it stands now, with what may be edited on it. */
   loadProposal(id: string): Promise<ProposalView> {
     return this.api.proposal(id);
@@ -133,15 +143,15 @@ export class Conversation {
   act(card: ProposalCard, action: 'confirm' | 'reject' | 'regenerate'): Promise<string | null> {
     return this.cardAction(card, () =>
       action === 'confirm'
-        ? this.api.confirm(card.proposal_id, card.version)
+        ? this.api.confirm(card.proposal_id, card.version, this.conversationId)
         : action === 'reject'
-          ? this.api.reject(card.proposal_id, card.version)
-          : this.api.regenerate(card.proposal_id),
+          ? this.api.reject(card.proposal_id, card.version, this.conversationId)
+          : this.api.regenerate(card.proposal_id, this.conversationId),
     );
   }
 
   edit(card: ProposalCard, changes: unknown): Promise<string | null> {
-    return this.cardAction(card, () => this.api.edit(card.proposal_id, card.version, changes));
+    return this.cardAction(card, () => this.api.edit(card.proposal_id, card.version, changes, this.conversationId));
   }
 
   /**
@@ -159,6 +169,7 @@ export class Conversation {
     this.set({ window: null });
     await this.refreshCard(card.proposal_id);
     await this.poll().catch(() => {});
+    await this.refreshInbox().catch(() => {});
     return problem;
   }
 

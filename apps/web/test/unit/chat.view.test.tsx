@@ -41,7 +41,7 @@ const mos = (id: number, speech: string, cards: Card[] = [], extra: Partial<Mess
 
 /** The conversation as the chat uses it: a state to show, changed by `set`, and what was sent. */
 function fakeConversation(initial: Partial<ConversationState> = {}) {
-  let state: ConversationState = { entries: [], thinking: false, window: null, proposals: {}, ...initial };
+  let state: ConversationState = { entries: [], thinking: false, window: null, proposals: {}, inbox: [], ...initial };
   const listeners = new Set<() => void>();
   const sent: Array<[string, string]> = [];
   const conversation = {

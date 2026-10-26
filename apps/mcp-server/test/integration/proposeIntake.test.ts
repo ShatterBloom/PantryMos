@@ -4,7 +4,7 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { META_CONVERSATION_ID, META_REQUEST_ID, sha256Hex } from '@pantrymos/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type RunningServers, startServers } from '../../src/app.ts';
-import { INSPECTOR_CONVERSATION_ID, parseErrorResult } from '../../src/mcp/toolkit.ts';
+import { parseErrorResult } from '../../src/mcp/toolkit.ts';
 import {
   connectMcpClient,
   createHousehold,
@@ -171,19 +171,19 @@ describe('propose_intake', () => {
     expect(retry).toEqual(first);
   });
 
-  it('requires _meta request and conversation ids', async () => {
-    const noRequest = await client.callTool({
+  it('refuses malformed _meta ids', async () => {
+    const badRequest = await client.callTool({
       name: 'propose_intake',
       arguments: { items: [{ name: 'egg', quantity: 1 }] },
-      _meta: { [META_CONVERSATION_ID]: randomUUID() },
+      _meta: { [META_REQUEST_ID]: 'abc', [META_CONVERSATION_ID]: randomUUID() },
     });
-    expect(parseErrorResult(noRequest)).toMatchObject({ code: 'request_id_required' });
-    const noConversation = await client.callTool({
+    expect(parseErrorResult(badRequest)).toMatchObject({ code: 'request_id_required' });
+    const badConversation = await client.callTool({
       name: 'propose_intake',
       arguments: { items: [{ name: 'egg', quantity: 1 }] },
-      _meta: { [META_REQUEST_ID]: randomUUID() },
+      _meta: { [META_REQUEST_ID]: randomUUID(), [META_CONVERSATION_ID]: 'abc' },
     });
-    expect(parseErrorResult(noConversation)).toMatchObject({ code: 'conversation_id_required' });
+    expect(parseErrorResult(badConversation)).toMatchObject({ code: 'conversation_id_required' });
   });
 
   it('rejects malformed input at the schema (caps from §11.5)', async () => {
@@ -198,20 +198,26 @@ describe('propose_intake', () => {
   });
 });
 
-describe('propose_intake with ALLOW_ANON_WRITES (dev only)', () => {
-  it('accepts calls without _meta and routes them to the Inspector conversation', async () => {
+describe('propose_intake from a client that sends no _meta', () => {
+  it("makes the card in the client's own conversation; a repeat lands on the same card", async () => {
     const hh = await createHousehold();
     await createItem(hh.householdId, { name: 'egg' });
-    const servers = await startServers(mcpTestConfig({ allowAnonWrites: true }), { log: false });
+    const servers = await startServers(mcpTestConfig(), { log: false });
     const client = await connectMcpClient(servers, hh.token);
     try {
       const res = await client.callTool({ name: 'propose_intake', arguments: { items: [{ name: 'egg', quantity: 2 }] } });
       expect(res.isError).toBeFalsy();
-      const { proposal_id } = res.structuredContent as { proposal_id: string };
+      const { proposal_id, version } = res.structuredContent as { proposal_id: string; version: number };
       const row = await withAdmin(async (admin) =>
-        admin.query(`SELECT conversation_id FROM pantry.proposals WHERE id = $1`, [proposal_id]),
+        admin.query(
+          `SELECT p.conversation_id, c.name FROM pantry.proposals p JOIN pantry.api_clients c ON c.id = p.conversation_id WHERE p.id = $1`,
+          [proposal_id],
+        ),
       );
-      expect(row.rows[0].conversation_id).toBe(INSPECTOR_CONVERSATION_ID);
+      expect(row.rows).toEqual([{ conversation_id: expect.any(String), name: 'test' }]);
+      // No request id to dedupe on: a retry is a new request, and finds the same pending card.
+      const again = await client.callTool({ name: 'propose_intake', arguments: { items: [{ name: 'egg', quantity: 2 }] } });
+      expect(again.structuredContent).toMatchObject({ proposal_id, version });
     } finally {
       await client.close();
       await servers.close();

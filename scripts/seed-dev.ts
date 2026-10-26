@@ -1,12 +1,12 @@
-// Seeds the demo household: catalog, the agent's MCP client token, and a dev Inspector token.
+// Seeds the agent's household (AGENT_HOUSEHOLD_ID, the demo one by default): catalog, the agent's
+// MCP client token, and a dev Inspector token.
 // Idempotent. Runs as the Postgres superuser against the app database. Usage: node scripts/seed-dev.ts
 import pg from 'pg';
-import { loadEnv, requireEnv, withDatabase } from './lib/env.ts';
+import { agentHouseholdId, loadEnv, requireEnv, withDatabase } from './lib/env.ts';
 import { seedDemo } from './lib/seed.ts';
 
 loadEnv();
 
-const DEMO_HOUSEHOLD_ID = '00000000-0000-4000-8000-000000000001';
 const AGENT_CLIENT_ID = '00000000-0000-4000-8000-0000000000a1';
 
 const adminUrl = requireEnv('PG_ADMIN_URL', 'postgres://postgres:postgres@127.0.0.1:5432/postgres');
@@ -17,7 +17,7 @@ const client = new pg.Client({ connectionString: withDatabase(adminUrl, dbName) 
 await client.connect();
 try {
   const result = await seedDemo(client, {
-    householdId: DEMO_HOUSEHOLD_ID,
+    householdId: agentHouseholdId(),
     householdName: 'Demo kitchen',
     agent: { clientId: AGENT_CLIENT_ID, token: agentToken },
     inspector: true,

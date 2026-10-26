@@ -206,6 +206,19 @@ describe('runWriteTool', () => {
     expect(runs).toBe(1);
   });
 
+  it("runs a call without _meta once per call, in the client's own conversation", async () => {
+    let runs = 0;
+    const effect = async (_tx: unknown, resolved: { requestId: string; conversationId: string | null }) => {
+      runs++;
+      return { data: { ...resolved }, text: 'ok' };
+    };
+    const first = await runWriteTool(ctx, call(undefined), effect);
+    const second = await runWriteTool(ctx, call(undefined), effect);
+    expect(runs).toBe(2);
+    expect((first.structuredContent as { conversationId: string }).conversationId).toBe(ctx.auth.clientId);
+    expect((first.structuredContent as { requestId: string }).requestId).not.toBe((second.structuredContent as { requestId: string }).requestId);
+  });
+
   it('passes the resolved ids to the effect', async () => {
     const m = meta();
     const res = await runWriteTool(ctx, call(m), async (_tx, resolved) => ({ data: { ...resolved }, text: 'ok' }));
@@ -216,8 +229,8 @@ describe('runWriteTool', () => {
   });
 
   it('returns isError results for missing metadata, conflicts and business errors', async () => {
-    const noMeta = await runWriteTool(ctx, call(undefined), async () => ({ data: {}, text: 'ok' }));
-    expect(parseErrorResult(noMeta)).toMatchObject({ code: 'request_id_required' });
+    const badMeta = await runWriteTool(ctx, call({ [META_REQUEST_ID]: 'not-a-uuid' }), async () => ({ data: {}, text: 'ok' }));
+    expect(parseErrorResult(badMeta)).toMatchObject({ code: 'request_id_required' });
 
     const m = meta();
     await runWriteTool(ctx, call(m), async () => ({ data: {}, text: 'ok' }));

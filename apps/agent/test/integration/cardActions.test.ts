@@ -141,7 +141,7 @@ describe('card actions and the /api surface', () => {
     expect(await events()).toHaveLength(1);
   });
 
-  it("acts only on this household's conversations' cards", async () => {
+  it("acts only on this household's cards, and on another client's card only in an open chat", async () => {
     // A card made by another MCP client exists, but not in any of the agent's conversations.
     await stockKitchen(kitchen, { egg: 12 });
     const foreign = (await callWrite(client, 'propose_adjustment', { item: 'egg', delta: -1, reason: 'discard' })).structuredContent as {
@@ -150,6 +150,61 @@ describe('card actions and the /api surface', () => {
     expect((await cardAction(agent, 'POST', `/api/proposals/${foreign.proposal_id}/confirm`, { version: 1 })).status).toBe(404);
     expect((await cardAction(agent, 'POST', `/api/proposals/${randomUUID()}/reject`, { version: 1 })).status).toBe(404);
     expect((await cardAction(agent, 'POST', `/api/proposals/not-a-uuid/reject`, { version: 1 })).status).toBe(400);
+
+    // Another household's card, even with a chat to answer it in.
+    const other = await createDemoKitchen();
+    await stockKitchen(other, { egg: 12 });
+    const otherClient = await connectMcpClient(servers, other.token);
+    try {
+      const theirs = (await otherClient.callTool({ name: 'propose_adjustment', arguments: { item: 'egg', delta: -1, reason: 'discard' } }))
+        .structuredContent as { proposal_id: string };
+      const res = await cardAction(agent, 'POST', `/api/proposals/${theirs.proposal_id}/confirm`, { version: 1, conversation_id: agent.conversationId });
+      expect(res.status).toBe(404);
+      expect((await agent.api({ method: 'GET', url: `/api/proposals/${theirs.proposal_id}` })).statusCode).toBe(404);
+    } finally {
+      await otherClient.close();
+    }
+  });
+
+  it("lists another client's cards in the inbox, and answers one in the open chat without a model turn", async () => {
+    await stockKitchen(kitchen, { egg: 12 });
+    const inbox = async () => (await agent.api({ method: 'GET', url: '/api/inbox' })).json().proposals as Array<Record<string, unknown>>;
+    // The app's own card stays in its chat, not the inbox.
+    await discardCard();
+    // A client that sends no _meta, such as a desktop assistant.
+    const external = (await client.callTool({ name: 'propose_intake', arguments: { items: [{ name: 'milk', quantity: 1, unit: 'l' }] } }))
+      .structuredContent as { proposal_id: string };
+    expect(await inbox()).toEqual([
+      {
+        proposal_id: external.proposal_id,
+        kind: 'intake',
+        status: 'pending',
+        version: 1,
+        card: expect.objectContaining({ readback_text: expect.any(String) }),
+        editable: expect.any(Object),
+        expires_at: expect.any(String),
+        client: 'test',
+      },
+    ]);
+    const modelCalls = agent.model.requests.length;
+
+    // A chat that has said nothing yet still answers it.
+    const fresh = randomUUID();
+    const res = await cardAction(agent, 'POST', `/api/proposals/${external.proposal_id}/confirm`, { version: 1, conversation_id: fresh });
+    expect(res.status).toBe(200);
+    expect(await inbox()).toEqual([]);
+    const messages = (await agent.api({ method: 'GET', url: `/api/messages?conversation_id=${fresh}` })).json().messages as Array<{
+      speech: string;
+      turn_type: string;
+    }>;
+    expect(messages.map((m) => [m.turn_type, m.speech])).toEqual([['gate', 'Done — added to your stock.']]);
+    const recorded = await agentRows<{ kind: string; triggers_turn: boolean }>(
+      agent,
+      `SELECT kind, triggers_turn FROM agent.app_events WHERE conversation_id = $1`,
+      [fresh],
+    );
+    expect(recorded).toEqual([{ kind: 'proposal_committed', triggers_turn: false }]);
+    expect(agent.model.requests).toHaveLength(modelCalls);
   });
 
   it('validates input and keeps conversations to their household and user', async () => {

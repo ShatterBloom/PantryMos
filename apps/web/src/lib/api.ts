@@ -65,6 +65,11 @@ export interface ProposalView {
   expires_at: string;
 }
 
+/** A pending card another MCP client made; `client` is its name, when the agent knows it. */
+export interface InboxCard extends ProposalView {
+  client: string | null;
+}
+
 export interface Timer {
   id: string;
   label: string;
@@ -172,24 +177,42 @@ export class Api {
     return this.request<ProposalView>('GET', `/api/proposals/${id}`);
   }
 
-  confirm(id: string, version: number) {
-    return this.request<Record<string, unknown>>('POST', `/api/proposals/${id}/confirm`, { version, request_id: this.options.newId() });
+  /** Pending cards other MCP clients made, to confirm here. */
+  inbox() {
+    return this.request<{ proposals: InboxCard[] }>('GET', '/api/inbox');
   }
 
-  reject(id: string, version: number) {
-    return this.request<Record<string, unknown>>('POST', `/api/proposals/${id}/reject`, { version, request_id: this.options.newId() });
+  // Card actions name the open chat: a card another client made is answered there.
+  confirm(id: string, version: number, conversationId: string) {
+    return this.request<Record<string, unknown>>('POST', `/api/proposals/${id}/confirm`, {
+      version,
+      request_id: this.options.newId(),
+      conversation_id: conversationId,
+    });
   }
 
-  edit(id: string, baseVersion: number, changes: unknown) {
+  reject(id: string, version: number, conversationId: string) {
+    return this.request<Record<string, unknown>>('POST', `/api/proposals/${id}/reject`, {
+      version,
+      request_id: this.options.newId(),
+      conversation_id: conversationId,
+    });
+  }
+
+  edit(id: string, baseVersion: number, changes: unknown, conversationId: string) {
     return this.request<Record<string, unknown>>('PATCH', `/api/proposals/${id}`, {
       base_version: baseVersion,
       changes,
       request_id: this.options.newId(),
+      conversation_id: conversationId,
     });
   }
 
-  regenerate(id: string) {
-    return this.request<Record<string, unknown>>('POST', `/api/proposals/${id}/regenerate`, { request_id: this.options.newId() });
+  regenerate(id: string, conversationId: string) {
+    return this.request<Record<string, unknown>>('POST', `/api/proposals/${id}/regenerate`, {
+      request_id: this.options.newId(),
+      conversation_id: conversationId,
+    });
   }
 
   timers(conversationId: string) {

@@ -24,6 +24,15 @@ export async function conversationExists(q: Queryable, id: string, householdId: 
   return rowCount === 1;
 }
 
+/** Which of `ids` are this household's conversations in the app; the rest belong to other MCP clients. */
+export async function appConversations(q: Queryable, ids: string[], householdId: string): Promise<Set<string>> {
+  const { rows } = await q.query<{ id: string }>(`SELECT id FROM agent.conversations WHERE id = ANY($1::uuid[]) AND household_id = $2`, [
+    ids,
+    householdId,
+  ]);
+  return new Set(rows.map((r) => r.id));
+}
+
 export async function loadMessages(q: Queryable, conversationId: string): Promise<Message[]> {
   const { rows } = await q.query<Message>(
     `SELECT role, content FROM agent.conversation_messages WHERE conversation_id = $1 ORDER BY seq`,
