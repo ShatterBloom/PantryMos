@@ -63,15 +63,16 @@ When you're done, Mos reads back what you used: "I'll record 3 eggs, 2 tomatoes 
 
 ## Where MCP and the models are in the code
 
-MCP is the system's spine. The model behind the agent is one of three, Amazon Bedrock by default:
+MCP is the system's spine. The model behind the agent is one of three; `.env` sets up which ones are offered, and you choose one in the app and can switch at any time:
 
 | Technology | Where it is used |
 |---|---|
 | **MCP server** (official `@modelcontextprotocol/sdk` 1.32.1, Streamable HTTP, protocol 2025-11-25) | [`apps/mcp-server/src/mcp/server.ts`](apps/mcp-server/src/mcp/server.ts) builds an `McpServer` and registers all 16 kitchen tools; each tool calls `server.registerTool` in [`apps/mcp-server/src/mcp/tools/`](apps/mcp-server/src/mcp/tools/). [`apps/mcp-server/src/app.ts`](apps/mcp-server/src/app.ts) serves it at `POST /mcp` with `StreamableHTTPServerTransport`, behind a bearer token. Entry point: [`apps/mcp-server/src/index.ts`](apps/mcp-server/src/index.ts). |
 | **MCP client** | [`apps/agent/src/mcpClient.ts`](apps/agent/src/mcpClient.ts) connects with `Client` and `StreamableHTTPClientTransport`. [`apps/agent/src/tools/mcp.ts`](apps/agent/src/tools/mcp.ts) turns `tools/list` into the model's tool list and runs `tools/call`. |
-| **Amazon Bedrock Converse API**, Amazon Nova 2 Lite (default) | [`apps/agent/src/model/bedrock.ts`](apps/agent/src/model/bedrock.ts) sends `ConverseCommand` with `toolConfig` through `BedrockRuntimeClient` (`@aws-sdk/client-bedrock-runtime`); model `global.amazon.nova-2-lite-v1:0`, temperature 0. The agent loop that uses it: [`apps/agent/src/turn/runTurn.ts`](apps/agent/src/turn/runTurn.ts). Entry point: [`apps/agent/src/index.ts`](apps/agent/src/index.ts). |
-| **Any OpenAI-compatible Chat Completions API** (`MODEL_PROVIDER=openai`) | [`apps/agent/src/model/openai.ts`](apps/agent/src/model/openai.ts) maps the same turn loop to `POST /chat/completions` with `tools`, using `fetch`. [`apps/agent/src/model/create.ts`](apps/agent/src/model/create.ts) picks the provider. |
-| **A ChatGPT plan, through Sign in with ChatGPT** (`MODEL_PROVIDER=chatgpt`) | [`apps/agent/src/model/responses.ts`](apps/agent/src/model/responses.ts) runs the turn loop on the Responses API (`POST /v1/responses`, streamed, `store: false`). [`apps/agent/src/chatgpt/`](apps/agent/src/chatgpt/) signs in with OAuth (PKCE, a `127.0.0.1` callback), keeps the token fresh and signs out; [`apps/web/src/ui/Plan.tsx`](apps/web/src/ui/Plan.tsx) is the "Continue with ChatGPT" button. |
+| **Amazon Bedrock Converse API**, Amazon Nova 2 Lite (`bedrock`) | [`apps/agent/src/model/bedrock.ts`](apps/agent/src/model/bedrock.ts) sends `ConverseCommand` with `toolConfig` through `BedrockRuntimeClient` (`@aws-sdk/client-bedrock-runtime`); model `global.amazon.nova-2-lite-v1:0`, temperature 0. The agent loop that uses it: [`apps/agent/src/turn/runTurn.ts`](apps/agent/src/turn/runTurn.ts). Entry point: [`apps/agent/src/index.ts`](apps/agent/src/index.ts). |
+| **Any OpenAI-compatible Chat Completions API** (`openai`) | [`apps/agent/src/model/openai.ts`](apps/agent/src/model/openai.ts) maps the same turn loop to `POST /chat/completions` with `tools`, using `fetch`. |
+| **A ChatGPT plan, through Sign in with ChatGPT** (`chatgpt`) | [`apps/agent/src/model/responses.ts`](apps/agent/src/model/responses.ts) runs the turn loop on the Responses API (`POST /v1/responses`, streamed, `store: false`). [`apps/agent/src/chatgpt/`](apps/agent/src/chatgpt/) signs in with OAuth (PKCE, a `127.0.0.1` callback), keeps the token fresh and signs out; [`apps/web/src/ui/Plan.tsx`](apps/web/src/ui/Plan.tsx) is the "Continue with ChatGPT" button. |
+| **Choosing the model** (`MODEL_PROVIDERS`) | [`apps/agent/src/model/create.ts`](apps/agent/src/model/create.ts) makes a client for each provider set up; [`apps/agent/src/model/choice.ts`](apps/agent/src/model/choice.ts) keeps the one chosen in the agent's database and sends every model call to it, so a switch applies from the next call and the conversation carries on. [`apps/web/src/ui/Model.tsx`](apps/web/src/ui/Model.tsx) is the picker: asked first while none is chosen, then in the header. |
 
 You can also call the MCP server directly with MCP Inspector; see [Trying the MCP server](#trying-the-mcp-server-with-mcp-inspector).
 
@@ -220,7 +221,7 @@ pnpm test:coverage    # all tests, with the coverage gate
 
 ### Evaluating the model
 
-`pnpm eval` runs the whole stack against a real model on multi-turn scenarios (Nova 2 Lite on Bedrock, or whichever model `MODEL_PROVIDER` picks): the full hands-free cook, goal requests, substitutes, mid-cook spills, timers, corrections, undo, stale cards, double confirms and "just deduct it" without a card. Each run is scored on four checks:
+`pnpm eval` runs the whole stack against a real model on multi-turn scenarios (`--provider` picks which one: `bedrock`, `openai` or `chatgpt`): the full hands-free cook, goal requests, substitutes, mid-cook spills, timers, corrections, undo, stale cards, double confirms and "just deduct it" without a card. Each run is scored on four checks:
 
 1. the right tools, 2. the right arguments, 3. the right database state afterwards, 4. a reply that matches the facts (claims extracted by a separate judge model and checked against the database).
 
@@ -278,15 +279,17 @@ pnpm dev:agent        # API on 127.0.0.1:7400
 pnpm dev:web          # http://127.0.0.1:5173
 ```
 
-Model settings are in `.env`. Bedrock (the default, `MODEL_PROVIDER=bedrock`): `AWS_PROFILE`, `BEDROCK_REGION` and `BEDROCK_MODEL_ID` (default `global.amazon.nova-2-lite-v1:0`). Another model: set `MODEL_PROVIDER=openai`, `OPENAI_MODEL`, and `OPENAI_BASE_URL` and `OPENAI_API_KEY` as the server needs. For example, Ollama on the same machine:
+Model settings are in `.env`. `MODEL_PROVIDERS` lists the models the app offers, comma-separated, for example `MODEL_PROVIDERS=bedrock,openai,chatgpt`; there is no default, and each one listed must be set up. When the app opens it asks which one Mos should use (with only one listed, that one is used), and the header switches between them; the ones not listed are shown greyed. The choice is kept across restarts.
+
+Bedrock (`bedrock`): `AWS_PROFILE`, `BEDROCK_REGION` and `BEDROCK_MODEL_ID` (default `global.amazon.nova-2-lite-v1:0`). An OpenAI-compatible API (`openai`): `OPENAI_MODEL`, and `OPENAI_BASE_URL` and `OPENAI_API_KEY` as the server needs. For example, Ollama on the same machine:
 
 ```bash
-MODEL_PROVIDER=openai
+MODEL_PROVIDERS=openai
 OPENAI_BASE_URL=http://127.0.0.1:11434/v1
 OPENAI_MODEL=qwen3:8b
 ```
 
-A ChatGPT plan: set `MODEL_PROVIDER=chatgpt` and `CHATGPT_TOKEN_KEY` (at least 32 characters, for example from `openssl rand -base64 32`; the sign-in's tokens are encrypted under it, and changing it signs you out), start the agent, and choose **Continue with ChatGPT** in the app. Requests then use your plan's usage, and the app links to where you manage it. OpenAI calls back to `http://127.0.0.1:<port>/auth/chatgpt/callback` on the agent, so sign in from a browser on the same machine; the port is `AGENT_PORT` unless `CHATGPT_CALLBACK_PORT` sets it. `CHATGPT_MODEL` picks a model (unset: the plan's default). With `pnpm dev:web`, also set `CHATGPT_RETURN_URL=http://localhost:5173/` so the browser comes back to the dev server. `pnpm eval` with `MODEL_PROVIDER=chatgpt` uses the sign-in saved in the dev database, so sign in from the app first.
+A ChatGPT plan (`chatgpt`): set `CHATGPT_TOKEN_KEY` (at least 32 characters, for example from `openssl rand -base64 32`; the sign-in's tokens are encrypted under it, and changing it signs you out), start the agent, choose the ChatGPT plan in the app, and then **Continue with ChatGPT**. Requests then use your plan's usage, and the app links to where you manage it. OpenAI calls back to `http://127.0.0.1:<port>/auth/chatgpt/callback` on the agent, so sign in from a browser on the same machine; the port is `AGENT_PORT` unless `CHATGPT_CALLBACK_PORT` sets it. `CHATGPT_MODEL` picks a model (unset: the plan's default). With `pnpm dev:web`, also set `CHATGPT_RETURN_URL=http://localhost:5173/` so the browser comes back to the dev server. `pnpm eval --provider chatgpt` uses the sign-in saved in the dev database, so sign in from the app first.
 
 ### Tests and eval
 
@@ -298,7 +301,7 @@ pnpm test:unit          # pure logic, no database needed
 pnpm test:integration   # real Postgres and HTTP listeners
 pnpm test:coverage      # all tests plus the coverage gate CI enforces
 
-pnpm eval               # real model calls (billable); writes docs/eval-log.md
+pnpm eval --provider bedrock   # real model calls (billable; or openai, chatgpt); writes docs/eval-log.md
 ```
 
 ### Connecting another MCP client
