@@ -139,6 +139,9 @@ h3 {
 
 /* Sign in with ChatGPT: the black "Continue with ChatGPT" button, and the plan indicator. */
 .btn-chatgpt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid #000;

@@ -8,6 +8,7 @@ import { type RunningServers, startServers } from '@pantrymos/mcp-server';
 import { TEST_AGENT_DB_URL } from '../../../../test/env.ts';
 import { createDemoKitchen, type DemoKitchen, mcpTestConfig, stockKitchen } from '../../../../test/fixtures.ts';
 import { ChatGPTAccount } from '../../src/chatgpt/account.ts';
+import { TokenSealer } from '../../src/chatgpt/sealing.ts';
 import type { AgentConfig } from '../../src/config.ts';
 import { createPool, type Pool } from '../../src/db.ts';
 import { ChatGPTPlanModel } from '../../src/model/responses.ts';
@@ -15,6 +16,7 @@ import { chat, lastMessage, startAgentWith, type TestAgent } from '../fixtures.t
 
 const CALLBACK = 'http://127.0.0.1:7400/auth/chatgpt/callback';
 const RETURN = 'http://localhost:7400/';
+const TOKEN_KEY = 'chatgpt-token-key-for-tests-0123456789';
 const PLAN = 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct';
 
 interface Seen {
@@ -160,7 +162,7 @@ describe('a ChatGPT plan through Sign in with ChatGPT', () => {
     fake.refreshReply = () => [200, { access_token: 'access-2', refresh_token: 'refresh-2', expires_in: 3600 }];
     fake.seen.length = 0;
     kitchen = await createDemoKitchen();
-    const settings = { callbackUrl: CALLBACK, authUrl: fake.base, apiUrl: `${fake.base}/v1`, maxTokens: 1024, timeoutMs: 5000 };
+    const settings = { tokenKey: TOKEN_KEY, callbackUrl: CALLBACK, authUrl: fake.base, apiUrl: `${fake.base}/v1`, maxTokens: 1024, timeoutMs: 5000 };
     const model: AgentConfig['model'] = { provider: 'chatgpt', ...settings, returnUrl: RETURN };
     pool = createPool(TEST_AGENT_DB_URL);
     await pool.query('DELETE FROM agent.chatgpt_session');
@@ -280,7 +282,30 @@ describe('a ChatGPT plan through Sign in with ChatGPT', () => {
     const refresh = fake.seen.find((s) => s.form.get('grant_type') === 'refresh_token')!;
     expect(Object.fromEntries(refresh.form)).toEqual({ grant_type: 'refresh_token', client_id: 'oaiapp_test1', refresh_token: 'refresh-1', resource: `${fake.base}/v1` });
     const { rows } = await pool.query(`SELECT refresh_token, expires_at > now() + interval '50 minutes' AS fresh FROM agent.chatgpt_session`);
-    expect(rows).toEqual([{ refresh_token: 'refresh-2', fresh: true }]);
+    expect(rows).toEqual([{ refresh_token: expect.any(String), fresh: true }]);
+    expect(new TokenSealer(TOKEN_KEY).open('refresh_token', rows[0].refresh_token)).toBe('refresh-2');
+  });
+
+  it('stores the tokens encrypted, and treats tokens it cannot open as signed out', async () => {
+    expect(await signIn()).toBe('signed_in');
+    const { rows } = await pool.query(`SELECT id_token, access_token, refresh_token FROM agent.chatgpt_session`);
+    const stored = JSON.stringify(rows);
+    for (const plain of ['access-1', 'refresh-1', 'cook@example.com']) expect(stored).not.toContain(plain);
+    expect(rows[0].access_token).toMatch(/^v1\./);
+
+    // The same database under another CHATGPT_TOKEN_KEY: signed out, and the unusable row is cleared.
+    const otherKey = new ChatGPTAccount(pool, { tokenKey: 'another-chatgpt-token-key-0123456789', callbackUrl: CALLBACK, authUrl: fake.base, apiUrl: `${fake.base}/v1` });
+    expect(await otherKey.status()).toMatchObject({ signed_in: false, email: null, model: null });
+    await expect(otherKey.current()).rejects.toMatchObject({ reason: 'signed_out' });
+    expect((await pool.query(`SELECT 1 FROM agent.chatgpt_session`)).rowCount).toBe(0);
+    expect(fake.counter).toBe(0); // no refresh was tried with what it couldn't read
+
+    // Tampered with in the database: the same.
+    expect(await signIn()).toBe('signed_in');
+    await pool.query(`UPDATE agent.chatgpt_session SET access_token = refresh_token`);
+    expect((await status()).chatgpt.signed_in).toBe(true);
+    await expect(account.current()).rejects.toMatchObject({ reason: 'signed_out' });
+    expect((await status()).chatgpt.signed_in).toBe(false);
   });
 
   it('ends the sign-in on a terminal refresh error, and keeps it on a temporary one', async () => {

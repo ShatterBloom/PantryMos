@@ -19,10 +19,13 @@ import {
   revoke,
   verifyIdToken,
 } from './oauth.ts';
+import { TokenSealer } from './sealing.ts';
 
 export interface ChatGPTSettings extends OAuthEndpoints {
   /** `http://127.0.0.1:<port>/auth/chatgpt/callback`: OpenAI accepts only a 127.0.0.1 loopback. */
   callbackUrl: string;
+  /** The key the tokens are encrypted under in the database. */
+  tokenKey: string;
   /** The model to use; unset, the plan's default (the first in its catalog). */
   model?: string;
 }
@@ -45,7 +48,9 @@ const ATTEMPT_TTL = '10 minutes';
 const REFRESH_MARGIN_MS = 60_000;
 
 const SIGNED_OUT = 'Sign in with ChatGPT to talk to Mos.';
+const ENDED = 'The ChatGPT sign-in has ended. Sign in with ChatGPT again.';
 
+/** A chatgpt_session row; its tokens are sealed as stored, opened once read. */
 interface SessionRow {
   client_id: string;
   email: string | null;
@@ -62,10 +67,12 @@ export class ChatGPTAccount implements PlanCredentials {
   private readonly settings: ChatGPTSettings;
   private readonly fetch: typeof fetch;
   private readonly now: () => number;
+  private readonly sealer: TokenSealer;
 
   constructor(pool: Pool, settings: ChatGPTSettings, fetchImpl: typeof fetch = fetch, now: () => number = Date.now) {
     this.pool = pool;
     this.settings = settings;
+    this.sealer = new TokenSealer(settings.tokenKey);
     this.fetch = fetchImpl;
     this.now = now;
   }
@@ -133,6 +140,11 @@ export class ChatGPTAccount implements PlanCredentials {
     if (registration.subject && registration.subject !== identity.sub) return 'failed';
     // The catalog is read once, here; without it there is no default model.
     const models = await listModels(this.settings, tokens.access_token, this.fetch).catch(() => [] as PlanModel[]);
+    const sealed = {
+      id: this.sealer.seal('id_token', tokens.id_token),
+      access: this.sealer.seal('access_token', tokens.access_token),
+      refresh: this.sealer.seal('refresh_token', tokens.refresh_token),
+    };
 
     await withTransaction(this.pool, async (tx) => {
       await tx.query(
@@ -140,7 +152,7 @@ export class ChatGPTAccount implements PlanCredentials {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (singleton) DO UPDATE SET client_id = $1, subject = $2, email = $3, id_token = $4, access_token = $5,
            refresh_token = $6, scopes = $7, expires_at = $8, models = $9, updated_at = now()`,
-        [clientId, identity.sub, identity.email ?? null, tokens.id_token, tokens.access_token, tokens.refresh_token, scopes, this.expiry(tokens.expires_in), JSON.stringify(models)],
+        [clientId, identity.sub, identity.email ?? null, sealed.id, sealed.access, sealed.refresh, scopes, this.expiry(tokens.expires_in), JSON.stringify(models)],
       );
       await tx.query(`UPDATE agent.chatgpt_registration SET subject = $1`, [identity.sub]);
     });
@@ -148,15 +160,17 @@ export class ChatGPTAccount implements PlanCredentials {
   }
 
   async status(): Promise<AccountStatus> {
-    const { rows } = await this.pool.query<{ signed_in: boolean; email: string | null; models: PlanModel[] | null; welcomed: boolean | null }>(
-      `SELECT s.singleton IS NOT NULL AS signed_in, s.email, s.models, r.welcomed
+    const { rows } = await this.pool.query<{ refresh_token: string | null; email: string | null; models: PlanModel[] | null; welcomed: boolean | null }>(
+      `SELECT s.refresh_token, s.email, s.models, r.welcomed
          FROM agent.chatgpt_registration r FULL JOIN agent.chatgpt_session s ON true`,
     );
     const row = rows[0];
+    // Tokens this key can't open are as good as none; the next model call clears them.
+    const signedIn = row?.refresh_token != null && this.sealer.open('refresh_token', row.refresh_token) !== null;
     return {
-      signed_in: row?.signed_in ?? false,
-      email: row?.email ?? null,
-      model: row?.signed_in ? this.modelOf(row.models ?? []) : null,
+      signed_in: signedIn,
+      email: signedIn ? (row?.email ?? null) : null,
+      model: signedIn ? this.modelOf(row?.models ?? []) : null,
       welcomed: row?.welcomed ?? false,
     };
   }
@@ -177,18 +191,27 @@ export class ChatGPTAccount implements PlanCredentials {
       return row;
     });
     if (!session) return { revoked: true };
-    return { revoked: await revoke(this.settings, { clientId: session.client_id, refreshToken: session.refresh_token }, this.fetch) };
+    const refreshToken = this.sealer.open('refresh_token', session.refresh_token);
+    if (refreshToken === null) return { revoked: false };
+    return { revoked: await revoke(this.settings, { clientId: session.client_id, refreshToken }, this.fetch) };
   }
 
   /** PlanCredentials: a token good for at least another minute, refreshed under the session's lock. */
   async current(): Promise<{ accessToken: string; model: string | null }> {
-    const row = (await this.pool.query<SessionRow>(`SELECT * FROM agent.chatgpt_session`)).rows[0];
-    if (!row) throw new ModelUnavailableError('signed_out', SIGNED_OUT);
-    if (this.fresh(row)) return { accessToken: row.access_token, model: this.modelOf(row.models) };
+    const stored = (await this.pool.query<SessionRow>(`SELECT * FROM agent.chatgpt_session`)).rows[0];
+    if (!stored) throw new ModelUnavailableError('signed_out', SIGNED_OUT);
+    const row = this.opened(stored);
+    if (row && this.fresh(row)) return { accessToken: row.access_token, model: this.modelOf(row.models) };
 
     const outcome = await withTransaction(this.pool, async (tx) => {
-      const locked = (await tx.query<SessionRow>(`SELECT * FROM agent.chatgpt_session FOR UPDATE`)).rows[0];
-      if (!locked) return null;
+      const lockedRow = (await tx.query<SessionRow>(`SELECT * FROM agent.chatgpt_session FOR UPDATE`)).rows[0];
+      if (!lockedRow) return null;
+      const locked = this.opened(lockedRow);
+      // Sealed under another key (CHATGPT_TOKEN_KEY changed), or tampered with: sign in again.
+      if (!locked) {
+        await tx.query(`DELETE FROM agent.chatgpt_session`);
+        return null;
+      }
       // Another request refreshed it while this one waited for the lock.
       if (this.fresh(locked)) return locked;
       try {
@@ -209,7 +232,13 @@ export class ChatGPTAccount implements PlanCredentials {
         };
         await tx.query(
           `UPDATE agent.chatgpt_session SET access_token = $1, refresh_token = $2, id_token = $3, scopes = $4, expires_at = $5, updated_at = now()`,
-          [updated.access_token, updated.refresh_token, updated.id_token, updated.scopes, updated.expires_at],
+          [
+            this.sealer.seal('access_token', updated.access_token),
+            this.sealer.seal('refresh_token', updated.refresh_token),
+            this.sealer.seal('id_token', updated.id_token),
+            updated.scopes,
+            updated.expires_at,
+          ],
         );
         return updated;
       } catch (err) {
@@ -222,8 +251,17 @@ export class ChatGPTAccount implements PlanCredentials {
         throw err;
       }
     });
-    if (!outcome) throw new ModelUnavailableError('signed_out', 'The ChatGPT sign-in has ended. Sign in with ChatGPT again.');
+    if (!outcome) throw new ModelUnavailableError('signed_out', ENDED);
     return { accessToken: outcome.access_token, model: this.modelOf(outcome.models) };
+  }
+
+  /** The row with its tokens opened, or null when any of them can't be. */
+  private opened(row: SessionRow): SessionRow | null {
+    const idToken = this.sealer.open('id_token', row.id_token);
+    const accessToken = this.sealer.open('access_token', row.access_token);
+    const refreshToken = this.sealer.open('refresh_token', row.refresh_token);
+    if (idToken === null || accessToken === null || refreshToken === null) return null;
+    return { ...row, id_token: idToken, access_token: accessToken, refresh_token: refreshToken };
   }
 
   private fresh(row: SessionRow): boolean {

@@ -1,6 +1,8 @@
 // Sign in with ChatGPT in the page, as OpenAI's UI guidelines ask: "Continue with ChatGPT" to sign
 // in, "Using ChatGPT plan" with a "Manage usage" link while signed in, and a one-time welcome notice.
 import { useState, useSyncExternalStore } from 'react';
+// OpenAI's approved button asset (developers.openai.com/siwc/website), unchanged.
+import chatgptLogo from '../assets/chatgpt-logo-white.svg';
 import { MANAGE_USAGE_URL } from '../lib/conversation.ts';
 import type { Plan } from '../lib/plan.ts';
 
@@ -25,6 +27,7 @@ export function PlanControls({ plan, onProblem }: { plan: Plan; onProblem: (text
   if (!chatgpt.signed_in) {
     return (
       <button className="btn btn-chatgpt" disabled={busy} onClick={() => void run(() => plan.signIn())}>
+        <img src={chatgptLogo} alt="" width={20} height={20} />
         Continue with ChatGPT
       </button>
     );

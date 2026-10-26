@@ -35,6 +35,10 @@ export const CHATGPT_CALLBACK_PATH = '/auth/chatgpt/callback';
  * callback whose path stays the same after the first sign-in; only its port may change.
  */
 const ChatGPTSchema = z.object({
+  /** Encrypts the plan's tokens in the agent's database (see chatgpt/sealing.ts). */
+  tokenKey: z
+    .string({ error: 'CHATGPT_TOKEN_KEY is required when MODEL_PROVIDER=chatgpt' })
+    .min(32, 'CHATGPT_TOKEN_KEY must be at least 32 characters'),
   /** Unset: the plan's default, the first model in its catalog. */
   model: z.string().min(1).optional(),
   callbackUrl: z.url().refine((u) => {
@@ -136,6 +140,7 @@ const modelEnv = (env: NodeJS.ProcessEnv) => {
     const port = env.CHATGPT_CALLBACK_PORT || env.AGENT_PORT || '7400';
     return {
       provider,
+      tokenKey: env.CHATGPT_TOKEN_KEY || undefined,
       model: env.CHATGPT_MODEL || undefined,
       callbackUrl: `http://127.0.0.1:${port}${CHATGPT_CALLBACK_PATH}`,
       returnUrl: env.CHATGPT_RETURN_URL || undefined,

@@ -12,6 +12,7 @@ describe('createModel', () => {
   const openai = { provider: 'openai', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', maxTokens: 1024, timeoutMs: 60_000 } as const;
   const chatgpt = {
     provider: 'chatgpt',
+    tokenKey: 'chatgpt-token-key-for-tests-0123456789',
     callbackUrl: 'http://127.0.0.1:7400/auth/chatgpt/callback',
     authUrl: 'https://auth.openai.com',
     apiUrl: 'https://api.openai.com/v1',

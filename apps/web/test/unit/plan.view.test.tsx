@@ -68,7 +68,10 @@ describe('PlanControls', () => {
 
   it('signs in with "Continue with ChatGPT", sending the browser to ChatGPT', async () => {
     const { visits, calls } = await setup(signedOut);
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with ChatGPT' }));
+    const button = screen.getByRole('button', { name: 'Continue with ChatGPT' });
+    // OpenAI's logo beside the label, decorative: the name stays the label alone.
+    expect(button.querySelector('img')?.getAttribute('src')).toMatch(/chatgpt-logo-white/);
+    fireEvent.click(button);
     await settle();
     expect(calls).toEqual(['model', 'sign-in']);
     expect(visits).toEqual(['https://auth.openai.com/api/accounts/authorize?x=1']);
