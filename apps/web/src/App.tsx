@@ -8,6 +8,7 @@ import { Inbox } from './ui/Inbox.tsx';
 import { ModelPicker } from './ui/Model.tsx';
 import { KitchenPanel, LedgerPanel, TimersStrip } from './ui/Panels.tsx';
 import { PlanControls, PlanWelcome } from './ui/Plan.tsx';
+import { Robot } from './ui/Robot.tsx';
 
 /** The passcode prompt, asked by the API client when a deployed agent needs one (§11.4). */
 let askForPasscode: ((resolve: (passcode: string | null) => void) => void) | null = null;
@@ -78,8 +79,8 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            M
+          <span className="brand-mark">
+            <Robot size={30} state={listening.listening ? 'listening' : 'idle'} />
           </span>
           <div>
             <h1>PantryMos</h1>
@@ -103,11 +104,17 @@ export function App() {
           ) : (
             <span className="muted small">{speechRecognitionAvailable() ? '' : 'Voice needs Chrome'}</span>
           )}
-          <button className="btn btn-quiet" aria-pressed={muted} onClick={toggleMute} title={muted ? 'Mos will speak again' : 'Mos stays silent'}>
-            {muted ? 'Unmute' : 'Mute'}
+          <button
+            className="btn btn-icon"
+            aria-label={muted ? 'Unmute' : 'Mute'}
+            aria-pressed={muted}
+            onClick={toggleMute}
+            title={muted ? 'Unmute: Mos will speak again' : 'Mute: Mos stays silent'}
+          >
+            <SpeakerIcon muted={muted} />
           </button>
-          <button className="btn btn-quiet" onClick={newConversation} title="Start a new conversation">
-            New chat
+          <button className="btn btn-icon" aria-label="New chat" onClick={newConversation} title="New chat">
+            <NewChatIcon />
           </button>
         </div>
       </header>
@@ -142,6 +149,24 @@ export function App() {
         />
       )}
     </div>
+  );
+}
+
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+      {muted ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M16 9a4.5 4.5 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" />}
+    </svg>
+  );
+}
+
+function NewChatIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 12.5V17a2.5 2.5 0 0 1-2.5 2.5H9l-4.5 3v-3A2.5 2.5 0 0 1 3 17V7a2.5 2.5 0 0 1 2.5-2.5h7" />
+      <path d="M18 3v6M15 6h6" />
+    </svg>
   );
 }
 

@@ -2,6 +2,7 @@
 import { type FormEvent, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Conversation, ConversationState, Entry } from '../lib/conversation.ts';
 import { OptionsCardView, ProposalCardView, StepCardView } from './Cards.tsx';
+import { Robot } from './Robot.tsx';
 
 export function Chat(props: { conversation: Conversation; pushToTalk: { start(): void; stop(): void } | null }) {
   const { conversation, pushToTalk } = props;
@@ -56,6 +57,9 @@ export function Chat(props: { conversation: Conversation; pushToTalk: { start():
       <div className="timeline" role="log" aria-live="polite">
         {state.entries.length === 0 && (
           <div className="empty">
+            <span className="empty-robot">
+              <Robot size={72} />
+            </span>
             <p className="empty-title">Hi, I'm Mos.</p>
             <p>Tell me what you bought, ask what to cook, or say "Mos, what's expiring soon?"</p>
           </div>
@@ -71,10 +75,15 @@ export function Chat(props: { conversation: Conversation; pushToTalk: { start():
           />
         ))}
         {state.thinking && (
-          <div className="bubble bubble-mos bubble-thinking" aria-label="Mos is thinking">
-            <span />
-            <span />
-            <span />
+          <div className="mos-row">
+            <span className="mos-face">
+              <Robot size={22} state="thinking" />
+            </span>
+            <div className="bubble bubble-mos bubble-thinking" aria-label="Mos is thinking">
+              <span />
+              <span />
+              <span />
+            </div>
           </div>
         )}
         <div ref={end} />
@@ -153,7 +162,11 @@ function EntryView(props: {
   }
   const { message } = entry;
   return (
-    <div className="mos">
+    <div className="mos-row">
+      <span className="mos-face">
+        <Robot size={22} />
+      </span>
+      <div className="mos">
       {message.speech && (
         <div className={`bubble bubble-mos${message.turn_type === 'proactive' ? ' bubble-proactive' : ''}`}>{message.speech}</div>
       )}
@@ -173,6 +186,7 @@ function EntryView(props: {
           <OptionsCardView key={`options-${i}`} card={card} disabled={props.busy} onPick={(answer) => void conversation.send(answer, 'text')} />
         );
       })}
+      </div>
     </div>
   );
 }
