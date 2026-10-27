@@ -6,7 +6,7 @@
 
 **[Watch the 4-minute demo on YouTube](https://youtu.be/1Nhl4VhwLTE)**: adding groceries, cooking dinner by voice, a spilled-milk correction, and how the MCP server keeps the model from changing anything on its own.
 
-> The kitchen itself is a standalone **MCP server**, and our own agent uses it as its tools. The agent runs on **Amazon Bedrock (Amazon Nova 2 Lite)** by default, on any OpenAI-compatible model API (OpenAI, or a local server such as Ollama), or on your ChatGPT plan through Sign in with ChatGPT. The voice front end runs in the browser (Web Speech API, English only).
+> The kitchen itself is a standalone **MCP server**, and our own agent uses it as its tools. You choose the agent's model in the app: **Amazon Nova 2 Lite on Amazon Bedrock**, any OpenAI-compatible model API (OpenAI, or a local server such as Ollama), or your ChatGPT plan through Sign in with ChatGPT. The voice front end runs in the browser (Web Speech API, English only).
 
 - [The problem](#the-problem)
 - [What PantryMos does](#what-pantrymos-does)
@@ -86,7 +86,7 @@ You can also call the MCP server directly with MCP Inspector; see [Trying the MC
 flowchart LR
     U(("You")) -- "voice / tap" --> W["Web app<br/>React 19 · Web Speech API<br/>chat, cards, stock, ledger, timers"]
     W -- "/api (session cookie)" --> A["Agent<br/>Fastify 5 · own agent loop<br/>timers, proactive turns, voice gate"]
-    A -- "Converse API (tool use)" --> B["Amazon Bedrock<br/>Amazon Nova 2 Lite"]
+    A -- "tool use" --> B["The model you chose<br/>Nova 2 Lite on Bedrock ·<br/>OpenAI-compatible API · ChatGPT plan"]
     A -- "MCP over Streamable HTTP<br/>(bearer token)" --> M["MCP server<br/>official MCP SDK · Fastify 5<br/>all kitchen rules"]
     A -- "internal API<br/>(service token)<br/>confirm / edit / refresh a card" --> M
     M --> P[("PostgreSQL 16<br/>schema pantry")]
@@ -96,7 +96,7 @@ flowchart LR
 Three services, one rule: **the model proposes, you confirm, the server commits.**
 
 - **Web app** (`apps/web`): a single-page React app. Push-to-talk, a hands-free mode that listens for "Mos, …", spoken replies, and cards you can confirm, edit, discard or refresh. It polls the agent every 2 seconds for new messages, stock, the ledger and timers.
-- **Agent** (`apps/agent`): owns the conversation, not the kitchen. It runs the model ↔ tool loop on Bedrock, keeps timers, sends proactive messages, and decides voice confirmations in code (the *ConfirmGate*).
+- **Agent** (`apps/agent`): owns the conversation, not the kitchen. It runs the model ↔ tool loop on the model you chose, keeps timers, sends proactive messages, and decides voice confirmations in code (the *ConfirmGate*).
 - **MCP server** (`apps/mcp-server`): owns the kitchen. Every rule about stock, dates, recipes and cooking sessions is deterministic code here. Its MCP tools can read and **propose**, never commit. Commits arrive only through a separate internal API, which the model has no tool for.
 - **PostgreSQL**: each service has its own schema and its own database role, with no access to the other's. The ledger tables are append-only at the privilege level (`REVOKE UPDATE`).
 
@@ -111,7 +111,7 @@ Three services, one rule: **the model proposes, you confirm, the server commits.
 | Data | PostgreSQL 16: relational tables plus JSONB for card plans and conversation content |
 | Auth | Browser → agent: HMAC-signed session cookie, optional passcode. Agent → MCP: bearer token (stored as a SHA-256 hash, mapped to a household). Agent → internal API: service token |
 | Deployment | Docker multi-stage image; Docker Compose for Postgres, migrations, MCP server and agent |
-| Tests | Vitest, fast-check, jsdom + Testing Library; a separate eval against real Bedrock |
+| Tests | Vitest, fast-check, jsdom + Testing Library; a separate eval against a real model |
 
 ## How it works
 
@@ -121,7 +121,7 @@ Three services, one rule: **the model proposes, you confirm, the server commits.
 
 1. The web app sends the text to `POST /api/chat` with a conversation id and a request id.
 2. The agent takes a lease on the conversation, so two requests can't interleave in it.
-3. The agent sends the conversation, the system prompt and the tool list (from MCP `tools/list`, plus its own timer tools) to the model: by default Nova 2 Lite, through the Bedrock Converse API.
+3. The agent sends the conversation, the system prompt and the tool list (from MCP `tools/list`, plus its own timer tools) to the model you chose: Nova 2 Lite through the Bedrock Converse API, an OpenAI-compatible API, or your ChatGPT plan.
 4. The model asks for `propose_intake`. The agent calls it over MCP.
 5. The MCP server works out the item, amount, unit and dates in code, and saves a **versioned proposal**. Stock is unchanged.
 6. The agent returns Mos's reply with the card. The web app shows the card and reads it aloud, ending with one question: "Say confirm, or tell me what to change."
