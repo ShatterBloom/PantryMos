@@ -2,6 +2,10 @@
 
 **Mos, your kitchen's little helper.** PantryMos is a hands-free kitchen agent. It keeps your kitchen's stock batch by batch, plans a meal from what is about to go bad, talks you through the recipe with timers, and handles surprises while you cook. It never changes your stock until you say so.
 
+[![PantryMos demo video](https://img.youtube.com/vi/1Nhl4VhwLTE/maxresdefault.jpg)](https://youtu.be/1Nhl4VhwLTE)
+
+**[Watch the 4-minute demo on YouTube](https://youtu.be/1Nhl4VhwLTE)**: adding groceries, cooking dinner by voice, a spilled-milk correction, and how the MCP server keeps the model from changing anything on its own.
+
 > The kitchen itself is a standalone **MCP server**, and our own agent uses it as its tools. The agent runs on **Amazon Bedrock (Amazon Nova 2 Lite)** by default, on any OpenAI-compatible model API (OpenAI, or a local server such as Ollama), or on your ChatGPT plan through Sign in with ChatGPT. The voice front end runs in the browser (Web Speech API, English only).
 
 - [The problem](#the-problem)
